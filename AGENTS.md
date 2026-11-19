@@ -10,7 +10,7 @@
 
 ## Implementation process
 
-- Runtime code, configuration, dependencies, assets and CI changes require the coordinated factory process. The product must ship its coordinator instructions, worker/reviewer briefs, scripts, gates and dependency setup in this repository. Do not delegate that responsibility to Samson or rely on a private vault/global installation. The factory is not implemented in this bootstrap; do not pretend it can run before its tooling and a full job contract are available.
+- Runtime code, configuration, dependencies, assets and CI changes require the coordinated factory process. Use [the coordinator instructions](factory/COORDINATOR.md), the structured `scripts/factory-job.py` gate and `scripts/factory-alignment.py`. This repository ships offline gates and briefing resources plus [local Pi resource setup and an offline loading probe](docs/pi-setup.md), not a live launcher or dependency installer. Do not depend on a private vault or global installation.
 - The developer's Pi session is the coordinator. The developer using the kit is the human approver for their jobs; Darryl is not a required runtime approver.
 - Start each structured job from a named commit with recorded working-tree state and frozen prerequisite hashes. No implementation job starts from this repository's unborn HEAD.
 - Use a bounded manifest with allowed paths, acceptance criteria, observable expected outcomes, verification commands, budgets and a stopping point.
@@ -18,7 +18,7 @@
 - Guard claims must match what their assertions prove. Demonstrate that realistic injected defects fail the intended guards. Report skips and unavailable checks as NOT VERIFIED.
 - Allow at most two repair-and-review rounds within approved scope and budget. Return to the developer using the kit for additional scope, paths or budget.
 - Keep accepted results uncommitted until that developer explicitly approves a commit. Commits, pushes, publishing, deployments, destructive operations and cleanup require explicit approval.
-- Documentation-only bootstrap work does not claim factory execution or acceptance verification.
+- Offline factory fixtures do not establish live factory execution or Pi instruction loading. The Pi SDK probe observes resources and skill expansion only; neither proves fresh-platform acceptance.
 
 ## Product boundaries
 

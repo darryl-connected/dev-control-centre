@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "note": "Candidate source fingerprints. Matching bytes do not prove approval. Review the named sources and fingerprint changes independently; this tool never writes the file.",
+  "entries": [
+    {
+      "path": "AGENTS.md",
+      "section": "## Implementation process",
+      "sha256": "9e1b88e5e7a710b7d54ae79c649229df7f1a202a04eb3aa0eb96c5becd6f1a09"
+    },
+    {
+      "path": "LICENSE",
+      "section": null,
+      "sha256": "6e3cc1fea9ec0bd9b4818601eb3a61f6662a8b15746cc1e692ee6449e2b15a6e"
+    },
+    {
+      "path": "README.md",
+      "section": null,
+      "sha256": "07859f765770d5ca48bf26dcc20318acfd65af49b9c53d028ad0a6e3644621b7"
+    },
+    {
+      "path": "docs/scope.md",
+      "section": null,
+      "sha256": "e76d9d5a4234710274d929cf12083a106d3755c8102ef08cc1e9dc1a6972711c"
+    },
+    {
+      "path": "factory/COORDINATOR.md",
+      "section": null,
+      "sha256": "f6f87288fe23a74f1eea9a92af81334ed89db3dcab4fc0a59304f8bf40a66939"
+    },
+    {
+      "path": "factory/WORKER.md",
+      "section": null,
+      "sha256": "0c3449d4961b8c28138dcfd4a517e6baeafc407e0e013f98cebf7c68dc302f18"
+    },
+    {
+      "path": "factory/REVIEWER.md",
+      "section": null,
+      "sha256": "fd9f78e0b502b84057720d33ad2b7ba53b713bab3fd20714ce141f3f67c02613"
+    },
+    {
+      "path": "requirements-dev.txt",
+      "section": null,
+      "sha256": "dc77e7b5917c316ee23bcc64d41be8fdd4d9d972626ee85c338a7c84dabe303e"
+    },
+    {
+      "path": "scripts/build.py",
+      "section": null,
+      "sha256": "7eb80a7e023ae1ebc59f290ec98a8d083a988467d2bff899490d61e007fe1417"
+    },
+    {
+      "path": "scripts/lib/factory_contract.py",
+      "section": null,
+      "sha256": "36363ffd477fb224fe5419c9acd098747c9bb23002228a8f1e7afba51f6708d9"
+    },
+    {
+      "path": "scripts/factory-job.py",
+      "section": null,
+      "sha256": "d9e9c1dade44bf611da053fbdf63ed1b6eda7fd9e401569e78a22ab5c1386061"
+    },
+    {
+      "path": "scripts/factory-alignment.py",
+      "section": null,
+      "sha256": "11f8190de44b6a9f2954a954fb5bd6ba72971abca277a4968bc6b8aa64abc5c0"
+    },
+    {
+      "path": "scripts/validate-brief.py",
+      "section": null,
+      "sha256": "e80f43e399370836a339d4307fe17e1c24b8b3a5f9507fc992c5f55e6dccb67f"
+    },
+    {
+      "path": "tests/test_factory_job.py",
+      "section": null,
+      "sha256": "b52584eb9600dd835bb3941606cf2325425b2c156753cb2908f17b3380879191"
+    },
+    {
+      "path": "tests/test_factory_alignment.py",
+      "section": null,
+      "sha256": "4f84cc77249eac8bc9f1b660010d545f0f0d67f0112a8c4c705f64afe9ce8724"
+    },
+    {
+      "path": "tests/test_validate_brief.py",
+      "section": null,
+      "sha256": "46e1549bf83b2cfa24ebfb519814136eaef762b460be5b1d0782a6b33ca49266"
+    },
+    {
+      "path": "tests/test_instruction_packaging.py",
+      "section": null,
+      "sha256": "4012b8030c1bf0fe328ceb677aca5c73bc2d2a2abce24885ec7e0a38c4d61628"
+    },
+    {
+      "path": "tests/test_e2e_factory.py",
+      "section": null,
+      "sha256": "0d6ff0af0c2de0c1451187b6bfc0cf3ad27a1d24d648244f7fbbf157453ba3fa"
+    },
+    {
+      "path": "templates/pi/APPEND_SYSTEM.md",
+      "section": null,
+      "sha256": "7ba6f2947631b3bb59ea427d82c93ec7331ed9b565af30a4b9e418f10a30b963"
+    },
+    {
+      "path": "references/factory-contract.md",
+      "section": null,
+      "sha256": "c8f25f61ad4ecd3aa2d97dedbbd2c10b794b87d1f767d686bd8f995e4443b1a8"
+    }
+  ]
+}
