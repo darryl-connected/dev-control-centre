@@ -53,6 +53,8 @@ TOP_LEVEL_KEYS = {
     "lint_debt",
 }
 BASE_KEYS = {"commit", "status", "index_digest", "files"}
+LINK_MODE = "120000"
+ENTRY_MODES = ("100644", "100755", LINK_MODE)
 AGENT_KEYS = {"worktree", "model"}
 BUDGET_KEYS = {"minutes", "calls"}
 DECISION_KEYS = {"id", "source"}
@@ -281,21 +283,43 @@ def is_staged_only(status_lines: Iterable[str]) -> tuple[bool, str]:
     return True, ""
 
 
-def _tracked_entries(repo: Path) -> list[tuple[str, str]]:
+def _tracked_entries(repo: Path) -> list[tuple[str, str, str]]:
     result = git(repo, "ls-files", "--stage", "-z")
-    entries: list[tuple[str, str]] = []
+    entries: list[tuple[str, str, str]] = []
     for record in result.stdout.split("\0"):
         if not record:
             continue
         try:
             meta, path = record.split("\t", 1)
-            mode, _object, stage = meta.split(" ")
+            mode, oid, stage = meta.split(" ")
         except ValueError as error:
             raise ContractError(f"cannot parse index entry: {record!r}") from error
         if stage != "0":
             raise ContractError(f"unmerged index entry: {path}")
-        entries.append((mode, path))
+        entries.append((mode, oid, path))
     return entries
+
+
+def _head_link_ids(repo: Path) -> dict[str, str]:
+    links = {}
+    tree = git(repo, "--no-replace-objects", "ls-tree", "-r", "--full-tree", "-z", "HEAD")
+    for record in tree.stdout.split("\0"):
+        if record:
+            meta, path = record.split("\t", 1)
+            mode, _kind, oid = meta.split(" ")
+            if mode == LINK_MODE:
+                links[path] = oid
+    return links
+
+
+def _require_unchanged_links(expected: dict[str, str], observed: dict[str, str], boundary: str) -> None:
+    for path in sorted(expected.keys() | observed.keys()):
+        if observed.get(path) != expected.get(path):
+            raise ContractError(f"{boundary}: symlink added, removed, replaced or retargeted: {path}")
+
+
+def _link_digests(files: dict[str, dict]) -> dict[str, str]:
+    return {path: entry["sha256"] for path, entry in files.items() if entry.get("mode") == LINK_MODE}
 
 
 def _safe_relative(path: str) -> str:
@@ -314,7 +338,21 @@ def _safe_relative(path: str) -> str:
     return path
 
 
-def _file_entry(root: Path, path: str) -> dict:
+def _validate_link_payload(path: str, payload: bytes) -> None:
+    # POSIX lexical containment only. Never stat, resolve or open the destination.
+    if not payload or payload.startswith(b"/"):
+        raise ContractError(f"symlink target must be relative: {path}")
+    depth = path.count("/")
+    for part in payload.split(b"/"):
+        if part == b"..":
+            depth -= 1
+            if depth < 0:
+                raise ContractError(f"symlink target escapes the repository: {path}")
+        elif part not in (b"", b"."):
+            depth += 1
+
+
+def _file_entry(root: Path, path: str, *, tracked_link: bool = False) -> dict:
     _safe_relative(path)
     full = root / path
     try:
@@ -323,14 +361,20 @@ def _file_entry(root: Path, path: str) -> dict:
                 continue
             mode = (root / parent).lstat().st_mode
             if stat.S_ISLNK(mode):
-                raise ContractError(f"symlink parent is not allowed in a candidate: {path}")
+                raise ContractError(f"symlink parent is not allowed: {path}")
             if not stat.S_ISDIR(mode):
                 return {"deleted": True}
         info = full.lstat()
     except FileNotFoundError:
         return {"deleted": True}
     if stat.S_ISLNK(info.st_mode):
-        raise ContractError(f"symlink is not allowed in a candidate: {path}")
+        if not tracked_link:
+            raise ContractError(f"symlink is not allowed unless tracked at HEAD and in the index: {path}")
+        payload = os.readlink(os.fsencode(full))
+        _validate_link_payload(path, payload)
+        return {"sha256": sha256_bytes(payload), "mode": LINK_MODE}
+    if tracked_link:
+        raise ContractError(f"tracked symlink was replaced in the worktree: {path}")
     if not stat.S_ISREG(info.st_mode):
         raise ContractError(f"not a regular file: {path}")
     return {
@@ -343,15 +387,25 @@ def content_map(repo: str | Path) -> dict[str, dict]:
     """Map every tracked and untracked non-ignored path to its content and mode.
 
     Ignored files are excluded by design: build output is not candidate content.
-    Symlinks and gitlinks are rejected rather than followed.
+    Only unchanged HEAD/index/worktree symlinks are mapped, without following them.
     """
     root = repo_toplevel(repo)
+    tracked = _tracked_entries(root)
+    head_links = _head_link_ids(root)
+    index_links = {path: oid for mode, oid, path in tracked if mode == LINK_MODE}
+    _require_unchanged_links(head_links, index_links, "index symlink drift from HEAD")
     result: dict[str, dict] = {}
-    for index_mode, path in _tracked_entries(root):
-        if index_mode not in ("100644", "100755"):
+    for index_mode, _, path in tracked:
+        if index_mode not in ENTRY_MODES:
             kind = "submodule" if index_mode == "160000" else "non-regular index entry"
             raise ContractError(f"{kind} is not allowed: {path}")
-        result[path] = _file_entry(root, path)
+        result[path] = _file_entry(root, path, tracked_link=index_mode == LINK_MODE)
+    head_digests = {}
+    for path, oid in head_links.items():
+        # Undo the git wrapper's lossless decode; hash the raw blob, including non-UTF-8 bytes.
+        blob = git(root, "--no-replace-objects", "cat-file", "blob", oid).stdout
+        head_digests[path] = sha256_bytes(blob.encode("utf-8", errors="surrogateescape"))
+    _require_unchanged_links(head_digests, _link_digests(result), "worktree symlink drift from HEAD")
     others = git(root, "ls-files", "--others", "--exclude-standard", "-z").stdout
     for path in others.split("\0"):
         if path:
@@ -365,12 +419,13 @@ def candidate_digest(manifest_digest_value: str, files: dict[str, dict]) -> str:
 
 def capture_baseline(repo: str | Path) -> dict:
     root = repo_toplevel(repo)
+    commit = resolve_commit(root, "HEAD")
+    # Refuse unsafe entries and ancestors before asking Git to inspect checkout status.
+    files = content_map(root)
     status = worktree_status(root)
     staged_only, reason = is_staged_only(status)
     if not staged_only:
         raise ContractError(f"baseline is not clean or staged-only: {reason}")
-    commit = resolve_commit(root, "HEAD")
-    files = content_map(root)
     if not files or not FULL_SHA_RE.fullmatch(commit):
         raise ContractError("baseline requires a full 40-character commit SHA and a non-empty content map")
     for path, entry in files.items():
@@ -548,8 +603,8 @@ def validate_manifest(data: Any, require_baseline: bool = True) -> tuple[list[st
                     _keys(entry, {"sha256", "mode"}, f"base.files[{path}]", errors)
                     if not isinstance(entry.get("sha256"), str) or not HASH_RE.fullmatch(entry["sha256"]):
                         errors.append(f"base.files[{path}]: sha256 must be a 64-character digest")
-                    if entry.get("mode") not in ("100644", "100755"):
-                        errors.append(f"base.files[{path}]: mode must be 100644 or 100755")
+                    if entry.get("mode") not in ENTRY_MODES:
+                        errors.append(f"base.files[{path}]: mode must be 100644, 100755 or 120000")
                 if require_baseline and not files:
                     errors.append("base.files: a non-empty baseline content map is required (run snapshot)")
         elif require_baseline:
@@ -1273,13 +1328,13 @@ def _check_baseline(manifest: dict) -> list[str]:
     actual_commit = resolve_commit(repo, "HEAD")
     if actual_commit != base["commit"]:
         errors.append(f"base.commit: target HEAD is {actual_commit}, manifest records {base['commit']}")
+    current_files = content_map(repo)
     status = worktree_status(repo)
     if status != base["status"]:
         errors.append("base.status: working-tree state changed since the snapshot")
     current_index = index_digest(repo)
     if current_index != base["index_digest"]:
         errors.append("base.index_digest: index changed since the snapshot")
-    current_files = content_map(repo)
     if current_files != base["files"]:
         errors.append("base.files: target file contents changed since the snapshot")
     for path, digest in manifest["frozen"].items():
@@ -1526,8 +1581,10 @@ def integration(
             "alignment": alignment,
         }
 
+    baseline_files = manifest["base"]["files"]
     try:
         files = content_map(candidate_root)
+        _require_unchanged_links(_link_digests(baseline_files), _link_digests(files), "candidate symlink drift from baseline")
     except ContractError as error:
         errors.append(f"candidate: {error}")
         return {
@@ -1539,7 +1596,6 @@ def integration(
             "alignment": alignment,
         }
 
-    baseline_files = manifest["base"]["files"]
     for path in sorted(baseline_files):
         if path not in files or files[path].get("deleted"):
             errors.append(f"candidate: baseline prerequisite dropped: {path}")

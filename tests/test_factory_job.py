@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -57,15 +58,29 @@ def json_digest(data: dict) -> str:
     return digest(json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
 
 
+def fixture_nodes(root: Path, *, include_ignored: bool = False) -> dict[str, tuple[int, bytes]]:
+    nodes = {}
+    for item in root.iterdir():
+        if item.name == ".git" or (not include_ignored and item.name == "dist"):
+            continue
+        mode = item.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            nodes[item.name] = mode, os.readlink(os.fsencode(item))
+        elif stat.S_ISDIR(mode):
+            for path, entry in fixture_nodes(item, include_ignored=include_ignored).items():
+                nodes[f"{item.name}/{path}"] = entry
+        elif stat.S_ISREG(mode):
+            nodes[item.name] = mode, item.read_bytes()
+    return nodes
+
+
 def fixture_file_map(root: Path) -> dict:
-    # Independent fixture oracle. Fixture regular files are all visible except dist/.
-    files = {}
-    for item in sorted(root.rglob("*")):
-        relative = item.relative_to(root)
-        if relative.parts[0] not in {".git", "dist"} and item.is_file():
-            mode = "100755" if item.stat().st_mode & 0o111 else "100644"
-            files[relative.as_posix()] = {"sha256": digest(item.read_bytes()), "mode": mode}
-    return files
+    # Independent fixture oracle; preserve exact link payload bytes, not the destination.
+    result = {}
+    for path, (mode, payload) in fixture_nodes(root).items():
+        git_mode = "120000" if stat.S_ISLNK(mode) else "100755" if mode & 0o111 else "100644"
+        result[path] = {"sha256": digest(payload), "mode": git_mode}
+    return result
 
 
 class Fixture:
@@ -86,7 +101,7 @@ class Fixture:
         result = subprocess.run(
             ["git", "-C", str(cwd or self.repo), *args],
             capture_output=True,
-            encoding="utf-8",
+            encoding="utf-8", errors="surrogateescape",
             check=False,
             env=clean_env(self.home),
         )
@@ -117,15 +132,28 @@ class Fixture:
             "files": fixture_file_map(self.repo),
         }
 
-    def target_state(self) -> tuple:
-        files = {
-            p.relative_to(self.repo).as_posix(): (p.read_bytes(), p.stat().st_mode)
-            for p in self.repo.rglob("*") if p.is_file() and ".git" not in p.relative_to(self.repo).parts
-        }
+    def git_link_entry(self, path: str) -> dict:
+        record = self._git("ls-tree", "-z", "HEAD", "--", path).stdout
+        meta, name = record.removesuffix("\0").split("\t")
+        mode, kind, oid = meta.split()
+        assert (mode, kind, name) == ("120000", "blob", path), record
+        payload = self._git("cat-file", "blob", oid).stdout.encode("utf-8", errors="surrogateescape")
+        node_mode, node_payload = fixture_nodes(self.repo)[path]
+        assert stat.S_ISLNK(node_mode) and node_payload == payload, (node_mode, node_payload, payload)
+        return {"sha256": digest(payload), "mode": mode}
+
+    def checkout_state(self, root: Path) -> tuple:
+        def git_path(path: str) -> bytes:
+            name = self._git("rev-parse", "--git-path", path, cwd=root).stdout.removesuffix("\n")
+            return (root / name).read_bytes()
+
         return (
-            files, (self.repo / ".git/index").read_bytes(), (self.repo / ".git/HEAD").read_bytes(),
-            self._git("show-ref", "--head").stdout,
+            fixture_nodes(root, include_ignored=True), git_path("index"), git_path("HEAD"),
+            self._git("show-ref", "--head", cwd=root).stdout,
         )
+
+    def target_state(self) -> tuple:
+        return self.checkout_state(self.repo)
 
     def worktree(self, name: str, branch: str | None = None) -> Path:
         path = self.root / name
@@ -170,12 +198,17 @@ class JobCase(unittest.TestCase):
         return data
 
     def sync(self, source: Path, target: Path) -> None:
-        files = fixture_file_map(source)
-        for path, entry in files.items():
+        for path, (mode, payload) in fixture_nodes(source).items():
             full = target / path
             full.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source / path, full)
-            full.chmod(int(entry["mode"], 8))
+            if stat.S_ISLNK(mode):
+                full.unlink(missing_ok=True)
+                os.symlink(payload, os.fsencode(full))
+            else:
+                if full.is_symlink():
+                    full.unlink()
+                full.write_bytes(payload)
+                full.chmod(stat.S_IMODE(mode))
 
     def write_candidate(self, candidate: Path, path: str, text: str) -> None:
         full = candidate / path
@@ -482,6 +515,244 @@ class JobCase(unittest.TestCase):
         self.addCleanup(lambda: link.unlink(missing_ok=True))
         result = contract.integration(manifest, candidate, receipt, root=PACKAGE)
         self.assert_fails(result, "symlink")
+
+    def test_tracked_link_identity_across_snapshot_candidate_and_review(self) -> None:
+        link = "src/link.ref"
+        (self.repo / link).symlink_to("../docs//./readme.md")
+        self.fixture.commit("track an in-repo link with parent components")
+        expected = {link: self.fixture.git_link_entry(link)}
+        candidate = self.build_candidate()
+        review = self.build_review(candidate)
+        manifest_path = self.tmp / "manifest.json"
+        draft = self.manifest(candidate)
+        # Links may be frozen by their payload digest, just like regular file identities.
+        draft["frozen"] = {path: entry["sha256"] for path, entry in expected.items()}
+        draft["base"] = {"commit": "", "status": [], "index_digest": "", "files": {}}
+        manifest_path.write_text(json.dumps(draft), encoding="utf-8")
+        target_before = self.fixture.target_state()
+        candidate_before = self.fixture.checkout_state(candidate)
+        review_before = self.fixture.checkout_state(review)
+
+        snapshot = self.run_cli("snapshot", str(manifest_path))
+        self.assertEqual(snapshot.returncode, 0, snapshot.stderr)
+        manifest = json.loads(snapshot.stdout)
+        self.assertEqual(manifest["base"], self.fixture.baseline())
+        manifest_path.write_text(snapshot.stdout, encoding="utf-8")
+        preflight = self.run_cli("preflight", str(manifest_path), "--json")
+        self.assertEqual(preflight.returncode, 0, preflight.stdout + preflight.stderr)
+        receipt = self.receipt(manifest, candidate, review)
+        for tree in (candidate, review):
+            result = self.run_cli("candidate", str(manifest_path), "--candidate", str(tree))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            observed = json.loads(result.stdout)
+            self.assertEqual(observed["files"], fixture_file_map(tree))
+            self.assertEqual({path: observed["files"][path] for path in expected}, expected)
+            self.assertEqual(observed["candidate_digest"], receipt["candidate_digest"])
+        integrated = self.assert_integration(manifest, candidate, receipt)
+        self.assertEqual(integrated["changed_paths"], ["src/app.py", "src/feature.py"])
+        self.assertEqual(integrated["candidate_digest"], receipt["candidate_digest"])
+        self.assertEqual(self.fixture.target_state(), target_before)
+        self.assertEqual(self.fixture.checkout_state(candidate), candidate_before)
+        self.assertEqual(self.fixture.checkout_state(review), review_before)
+
+    def test_snapshot_maps_dangling_link_with_non_utf8_payload(self) -> None:
+        link = "src/dangling.ref"
+        os.symlink(b"../docs/missing-\xff", os.fsencode(self.repo / link))
+        self.fixture.commit("track exact bytes of a dangling in-repo link")
+        expected = self.fixture.git_link_entry(link)
+        path = self.tmp / "draft.json"
+        path.write_text(json.dumps(contract.example_manifest(str(self.repo))), encoding="utf-8")
+        result = self.run_cli("snapshot", str(path))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stdout)["base"]["files"][link], expected)
+
+    def test_snapshot_refuses_link_drift_even_when_allowlisted(self) -> None:
+        link = "src/link.ref"
+        new = "src/new.ref"
+        other = "src/app.py"
+        (self.repo / link).symlink_to("../docs/readme.md")
+        self.fixture.commit("track a relative link")
+        manifest_path = self.tmp / "manifest.json"
+        manifest_path.write_text(json.dumps(self.manifest(
+            self.tmp / "writer", allowed_paths=[link, new, other],
+        )), encoding="utf-8")
+        control = self.run_cli("snapshot", str(manifest_path))
+        self.assertEqual(control.returncode, 0, control.stdout + control.stderr)
+        for action, staged, reason in (
+            ("retarget", True, "index symlink drift from HEAD"),
+            ("index-only retarget", True, "index symlink drift from HEAD"),
+            ("drop", True, "index symlink drift from HEAD"),
+            ("replace", True, "index symlink drift from HEAD"),
+            ("add", True, "index symlink drift from HEAD"),
+            ("regular to link", True, "index symlink drift from HEAD"),
+            ("retarget", False, "worktree symlink drift from HEAD"),
+            ("drop", False, "worktree symlink drift from HEAD"),
+            ("replace", False, "tracked symlink was replaced in the worktree"),
+            ("add", False, "symlink is not allowed unless tracked"),
+        ):
+            with self.subTest(action=action, staged=staged):
+                self.fixture._git("reset", "--hard", "HEAD")  # disposable fixture only
+                (self.repo / new).unlink(missing_ok=True)
+                changed = self.change_fixture_link(self.repo, action, staged, link, new, other)
+                before = self.fixture.target_state()
+                result = self.run_cli("snapshot", str(manifest_path))
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn(reason, result.stderr)
+                self.assertIn(changed, result.stderr)
+                self.assertEqual(before, self.fixture.target_state())
+
+    def change_fixture_link(self, tree: Path, action: str, staged: bool, link: str, new: str, other: str) -> str:
+        changed = new if action == "add" else other if action == "regular to link" else link
+        path = tree / changed
+        path.unlink(missing_ok=True)
+        if action in ("retarget", "index-only retarget"):
+            path.symlink_to("../docs/./readme.md")  # same destination, different payload
+        elif action == "replace":
+            path.write_bytes(b"../docs/readme.md")  # same bytes, different mode
+        elif action != "drop":
+            path.symlink_to("../docs/readme.md")
+        if staged:
+            self.fixture._git("add", "--", changed, cwd=tree)
+        if action == "index-only retarget":
+            path.unlink()
+            path.symlink_to("../docs/readme.md")
+        return changed
+
+    def test_exact_candidate_and_review_cannot_change_allowlisted_links(self) -> None:
+        link = "src/link.ref"
+        new = "src/new.ref"
+        other = "tests/test_app.py"
+        (self.repo / link).symlink_to("../docs/readme.md")
+        self.fixture.commit("track a relative link")
+        candidate = self.build_candidate()
+        review = self.build_review(candidate)
+        manifest = self.manifest(candidate, allowed_paths=[link, new, other, "src/app.py", "src/feature.py"])
+        self.assert_integration(manifest, candidate, self.receipt(manifest, candidate, review))
+        for action, staged, reason in (
+            ("retarget", True, "index symlink drift from HEAD"),
+            ("add", True, "index symlink drift from HEAD"),
+            ("drop", True, "index symlink drift from HEAD"),
+            ("replace", True, "index symlink drift from HEAD"),
+            ("regular to link", True, "index symlink drift from HEAD"),
+            ("retarget", False, "worktree symlink drift from HEAD"),
+            ("drop", False, "worktree symlink drift from HEAD"),
+            ("replace", False, "tracked symlink was replaced in the worktree"),
+            ("add", False, "symlink is not allowed unless tracked"),
+        ):
+            with self.subTest(action=action, staged=staged):
+                for tree in (candidate, review):
+                    self.fixture._git("reset", "--hard", "HEAD", cwd=tree)  # disposable fixture only
+                    (tree / new).unlink(missing_ok=True)
+                    self.write_candidate(tree, "src/app.py", "def main():\n    return 2\n")
+                    changed = self.change_fixture_link(tree, action, staged, link, new, other)
+                files = fixture_file_map(candidate)
+                self.assertEqual(files, fixture_file_map(review))
+                receipt = self.receipt(manifest, candidate, review)
+                before = tuple(self.fixture.checkout_state(tree) for tree in (candidate, review))
+                diagnostic = self.assert_integration(manifest, candidate, receipt, reason)
+                self.assertIn(changed, diagnostic["errors"][0])
+                result = self.run_cli("candidate", str(self.tmp / "manifest.json"), "--candidate", str(candidate))
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn(reason, result.stderr)
+                self.assertIn(changed, result.stderr)
+                self.assertEqual(before, tuple(self.fixture.checkout_state(tree) for tree in (candidate, review)))
+
+    def test_review_refuses_link_index_drift_with_matching_worktree_bytes(self) -> None:
+        link = "src/link.ref"
+        (self.repo / link).symlink_to("../docs/readme.md")
+        self.fixture.commit("track a relative link")
+        candidate = self.build_candidate()
+        review = self.build_review(candidate)
+        manifest = self.manifest(candidate, allowed_paths=["src/**"])
+        receipt = self.receipt(manifest, candidate, review)
+        self.assert_integration(manifest, candidate, receipt)
+        self.change_fixture_link(review, "index-only retarget", True, link, "src/new.ref", "src/app.py")
+        self.assertEqual(fixture_file_map(candidate), fixture_file_map(review))
+        before = self.fixture.checkout_state(review)
+        self.assert_integration(manifest, candidate, receipt, "review.reviewer.worktree: index symlink drift from HEAD")
+        self.assertEqual(before, self.fixture.checkout_state(review))
+
+    def test_unsupported_entries_and_symlink_ancestors_are_read_only_refusals(self) -> None:
+        (self.repo / "docs/link.ref").symlink_to("../src/app.py")
+        commit = self.fixture.commit("keep an unchanged tracked link")
+        candidate = self.build_candidate()
+        manifest_path = self.tmp / "manifest.json"
+        manifest_path.write_text(json.dumps(self.manifest(candidate)), encoding="utf-8")
+        command = ("candidate", str(manifest_path), "--candidate", str(candidate))
+        control = self.run_cli(*command)
+        self.assertEqual(control.returncode, 0, control.stdout + control.stderr)
+        target_before = self.fixture.target_state()
+        external = self.tmp / "test-owned-external"
+        external.mkdir()
+        canary = external / "readme.md"
+        marker = b"fixed benign F1 read-observation canary\n"
+        canary.write_bytes(marker)
+
+        # Substituted ancestor, then an untracked link leaf, then a Git submodule entry.
+        (candidate / "docs").rename(self.tmp / "saved-docs")
+        (candidate / "docs").symlink_to(external, target_is_directory=True)
+        self.assert_no_canary_open(
+            command, candidate, "symlink parent is not allowed", canary, candidate / "docs/readme.md",
+        )
+        (candidate / "docs").unlink()
+        (self.tmp / "saved-docs").rename(candidate / "docs")
+        loose = candidate / "src/loose.ref"
+        loose.symlink_to(canary)
+        self.assert_no_canary_open(command, candidate, "symlink is not allowed unless tracked", canary, loose)
+        loose.unlink()
+        loose.symlink_to("../docs/readme.md")
+        self.assert_no_canary_open(command, candidate, "symlink is not allowed unless tracked", canary, loose)
+        loose.unlink()
+        self.fixture._git("update-index", "--add", "--cacheinfo", f"160000,{commit},src/sub", cwd=candidate)
+        self.assert_no_canary_open(command, candidate, "submodule is not allowed: src/sub", canary)
+        self.assertEqual(self.fixture.target_state(), target_before)
+        self.assertEqual(canary.read_bytes(), marker)
+
+    def test_snapshot_refuses_nonlocal_payloads_without_opening_canary(self) -> None:
+        external = self.tmp / "test-owned-external"
+        external.mkdir()
+        canary = external / "readme.md"
+        marker = b"fixed benign F1 read-observation canary\n"
+        canary.write_bytes(marker)
+        draft = self.tmp / "draft.json"
+        draft.write_text(json.dumps(contract.example_manifest(str(self.repo))), encoding="utf-8")
+        link = self.repo / "src/link.ref"
+        for payload, reason in (
+            (str(canary), "symlink target must be relative"),
+            ("../../test-owned-external/readme.md", "symlink target escapes the repository"),
+        ):
+            with self.subTest(payload=payload):
+                link.unlink(missing_ok=True)
+                link.symlink_to(payload)
+                self.fixture.commit("track a nonlocal test link")
+                self.assert_no_canary_open(("snapshot", str(draft)), self.repo, reason, canary, link)
+                self.assertEqual(canary.read_bytes(), marker)
+
+    def assert_no_canary_open(self, args: tuple[str, ...], tree: Path, reason: str, *watched: Path) -> None:
+        # Observe Python's actual open calls at the CLI boundary. The watched names are
+        # exclusively test-owned canaries and their test-fixture aliases. This hook is
+        # not a syscall tracer for Git or a filesystem sandbox.
+        runner = """
+import json, os, runpy, sys
+watched = set(json.loads(sys.argv[1]))
+def audit(event, args):
+    if event == 'open' and not isinstance(args[0], int):
+        if os.path.abspath(os.fsdecode(args[0])) in watched:
+            raise AssertionError('test canary open attempted: ' + os.fsdecode(args[0]))
+sys.argv = sys.argv[2:]
+sys.path.insert(0, os.path.dirname(sys.argv[0]))
+sys.addaudithook(audit)
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+        before = self.fixture.checkout_state(tree)
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", runner, json.dumps([str(p) for p in watched]), str(SCRIPT), *args],
+            cwd=self.tmp, env=clean_env(self.fixture.home), capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn(reason, result.stderr)
+        self.assertNotIn("test canary open attempted", result.stderr)
+        self.assertEqual(before, self.fixture.checkout_state(tree))
 
     def test_integration_rejects_candidate_changed_after_review(self) -> None:
         candidate = self.build_candidate()

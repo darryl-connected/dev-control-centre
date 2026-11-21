@@ -14,7 +14,7 @@ from pathlib import Path
 
 from test_e2e_factory_inbox import ENABLED, WRITER, PiFixture, opened
 from test_factory_inbox import CLI, evidence_dir, put, tree
-from test_factory_job import BASE_CONTENTS, Fixture, clean_env, digest
+from test_factory_job import BASE_CONTENTS, Fixture, clean_env, digest, json_digest
 
 PACKAGE = Path(__file__).resolve().parent.parent
 ARCHIVE = "dev-control-centre.tar.gz"
@@ -93,17 +93,25 @@ class DistributionTest(unittest.TestCase):
         return relocated
 
     def test_relocated_cli_snapshots_renders_and_preflights(self) -> None:
+        source_before = {path: digest((PACKAGE / path).read_bytes()) for path in EXPECTED_MEMBERS}
         root = self.extract(self.build(PACKAGE))
+        self.assertEqual(set(regular_files(root)), EXPECTED_MEMBERS)
         job = root / "scripts/factory-job.py"
+        aligned = json.loads(self.run_cli(root / "scripts/factory-alignment.py", "--json").stdout)
+        self.assertTrue(aligned["ok"])
         fixture = Fixture(self.tmp / "target fixture")
+        link = "src/relocated.ref"
+        (fixture.repo / link).symlink_to("../docs/./readme.md")
+        commit = fixture.commit("track a link in the relocated fixture")
         target_before = fixture.target_state()
+        expected_files = {
+            path: {"sha256": digest(contents.encode()), "mode": "100644"}
+            for path, contents in BASE_CONTENTS.items()
+        } | {link: fixture.git_link_entry(link)}
         expected_base = {
-            "commit": fixture.base_commit, "status": [],
+            "commit": commit, "status": [],
             "index_digest": digest(fixture._git("ls-files", "--stage", "-z").stdout.encode()),
-            "files": {
-                path: {"sha256": digest(contents.encode()), "mode": "100644"}
-                for path, contents in BASE_CONTENTS.items()
-            },
+            "files": expected_files,
         }
         skeleton = json.loads(self.run_cli(job, "example").stdout)
         self.assertEqual(skeleton["version"], 1)
@@ -121,21 +129,20 @@ class DistributionTest(unittest.TestCase):
         before = draft.read_bytes()
         captured = json.loads(self.run_cli(job, "snapshot", str(draft)).stdout)
         self.assertEqual(captured, skeleton | {"base": expected_base})
+        self.assertEqual(json_digest(captured["base"]["files"]), json_digest(expected_files))
         self.assertEqual(draft.read_bytes(), before)
         manifest = self.tmp / "manifest.json"
         manifest.write_text(json.dumps(captured), encoding="utf-8")
 
         brief = self.run_cli(job, "render", str(manifest)).stdout
         for line in (
-            "TASK OFFLINE-1. Demonstrate a relocated gate", f"Base commit: {fixture.base_commit}",
+            "TASK OFFLINE-1. Demonstrate a relocated gate", f"Base commit: {commit}",
             "C1 (from D1): fixture result is accepted", "Allowed paths: src/example.py.",
             "Budget: writer 17 minutes and 23 tool calls", "- production changes", "Do not hand off.",
             "Do not spawn sub-agents.", "Do not create worktrees or panes.", "Do not commit.",
             "Do not push.", "Do not use the network.", "Leave your change uncommitted.",
         ):
             self.assertIn(line, brief)
-        aligned = json.loads(self.run_cli(root / "scripts/factory-alignment.py", "--json").stdout)
-        self.assertTrue(aligned["ok"])
         passed = json.loads(self.run_cli(job, "preflight", str(manifest), "--json").stdout)
         self.assertTrue(passed["ok"] and passed["alignment"]["ok"])
         self.assertGreaterEqual(passed["duration_ms"], 0)
@@ -154,6 +161,7 @@ class DistributionTest(unittest.TestCase):
             self.assertIn(reason, payload["errors"][0])
             self.assertEqual(target_before, fixture.target_state())
         self.assertEqual(target_before, fixture.target_state())
+        self.assertEqual({path: digest((PACKAGE / path).read_bytes()) for path in EXPECTED_MEMBERS}, source_before)
         self.assertEqual(list(self.home.iterdir()), [], "relocated CLI must not create user settings")
         self.assertEqual(list(self.cwd.iterdir()), [], "CLI must not write into its current directory")
 

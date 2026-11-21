@@ -50,7 +50,7 @@
     {
       "path": "scripts/lib/factory_contract.py",
       "section": null,
-      "sha256": "36363ffd477fb224fe5419c9acd098747c9bb23002228a8f1e7afba51f6708d9"
+      "sha256": "a4a9b6be364b1fec6fcfaf0cf47553de643fa3798cfbecec55069cde58fb202d"
     },
     {
       "path": "scripts/factory-job.py",
@@ -70,7 +70,7 @@
     {
       "path": "tests/test_factory_job.py",
       "section": null,
-      "sha256": "b52584eb9600dd835bb3941606cf2325425b2c156753cb2908f17b3380879191"
+      "sha256": "1530738749682e847f91fd2fe4cad822084d6b1974d47ef4df8d72ab0ad02f22"
     },
     {
       "path": "tests/test_factory_alignment.py",
@@ -90,7 +90,7 @@
     {
       "path": "tests/test_e2e_factory.py",
       "section": null,
-      "sha256": "b82433a3aa59bef16ecd4708ffa7064cd404aab69459e33e4e5634042111eac2"
+      "sha256": "c76ecdecf3e1ca71479b6aeb684723389c0aa65a25cf5b8d68e992e301562980"
     },
     {
       "path": "templates/pi/APPEND_SYSTEM.md",
@@ -100,7 +100,7 @@
     {
       "path": "references/factory-contract.md",
       "section": null,
-      "sha256": "c8f25f61ad4ecd3aa2d97dedbbd2c10b794b87d1f767d686bd8f995e4443b1a8"
+      "sha256": "fd22c55c1dcc4d2ab400ad6602727de6c9da9ca0c1da9506f8b8c7e51cbbc015"
     }
   ]
 }
