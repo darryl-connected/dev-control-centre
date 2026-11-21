@@ -25,7 +25,7 @@
     {
       "path": "factory/COORDINATOR.md",
       "section": null,
-      "sha256": "ce7ab0e0f1fdc5e82e034e0565f481d3b8f0d161d4bd7f0c7bf17032c505a952"
+      "sha256": "03e9ad79f9da6a20b198121110baf459e0615c56665834e55bd130cf7b68af23"
     },
     {
       "path": "factory/WORKER.md",
@@ -95,7 +95,7 @@
     {
       "path": "templates/pi/APPEND_SYSTEM.md",
       "section": null,
-      "sha256": "7ba6f2947631b3bb59ea427d82c93ec7331ed9b565af30a4b9e418f10a30b963"
+      "sha256": "26402a5d8bb2c6eba27ec439804c1ce8c56860cf7adadddd0e28b12a35325496"
     },
     {
       "path": "references/factory-contract.md",
