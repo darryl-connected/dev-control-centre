@@ -22,7 +22,7 @@ Then in that Pi conversation, enter `/dcc-handoff enable <absolute-registration>
 
 ## Register attempts and publish completions
 
-Register the writer attempt before dispatch. Supply the reporting role with the fixed registration and attempt, not a command received from an inbox record. A separate producer publishes only when complete, with the approved role and attempt. For an implementation stop without a candidate use `blocked`, not `reported`.
+Register the writer attempt before dispatch. Supply the reporting role with the fixed registration and attempt, not a command received from an inbox record. A separate producer publishes only when complete, with the approved role and attempt. A writer must name the outcome explicitly. For an implementation stop without a candidate use `blocked`, not `reported`.
 
 ```sh
 python -B "$KIT/scripts/factory-inbox.py" register attempt "$INBOX/registration.json" writer a1 --approve
@@ -30,16 +30,18 @@ python -B "$KIT/scripts/factory-inbox.py" publish "$INBOX/registration.json" wri
   --report "$WRITER_REPORT" --evidence "$WRITER_EVIDENCE" --approve
 ```
 
-After the coordinator independently checks the candidate, save the existing `factory-job.py candidate` JSON as a private file. Register the reviewer attempt against it before independent review. Publish the actual reviewer receipt as the report and its corresponding evidence. The receipt must carry version 1, the registered manifest and candidate digests and the published verdict (`approved`, `changes_requested` or `blocked`). The transport checks these bindings, **not** the integration receipt requirements, reviewer independence, model identity or correctness.
+After the coordinator independently checks the candidate, save the existing `factory-job.py candidate` JSON as a private file. Register the reviewer attempt against it before independent review. Publish the actual reviewer receipt as the report and its corresponding evidence. The publisher derives the outcome from the receipt's `verdict` (`approved`, `changes_requested` or `blocked`). The receipt must be version 1 and carry the registered manifest and candidate digests. The transport checks these bindings, **not** the integration receipt requirements, reviewer independence, model identity or correctness.
 
 ```sh
 python -B "$KIT/scripts/factory-job.py" candidate "$MANIFEST" --candidate "$CANDIDATE" > "$CANDIDATE_ID"
 python -B "$KIT/scripts/factory-inbox.py" register attempt "$INBOX/registration.json" reviewer a1 \
   --candidate "$CANDIDATE_ID" --approve
-python -B "$KIT/scripts/factory-inbox.py" publish "$INBOX/registration.json" reviewer a1 changes_requested \
+python -B "$KIT/scripts/factory-inbox.py" publish "$INBOX/registration.json" reviewer a1 \
   --report "$REVIEW_RECEIPT" --evidence "$REVIEW_EVIDENCE" --approve
 python -B "$KIT/scripts/factory-inbox.py" inspect "$INBOX/registration.json" reviewer a1
 ```
+
+An existing reviewer call with an explicit outcome still works when it matches the receipt. An unsupported reviewer outcome or receipt verdict returns `invalid-outcome`; two supported but different verdicts return `outcome-conflict`. A malformed or misbound receipt returns `receipt-mismatch`, and an unregistered or invalid attempt returns `invalid-attempt`. These refusals do not reserve or publish the attempt; correct the input and use the properly registered attempt. A repeat of a successful publication is refused as `record-exists` without replacing its records.
 
 Create private source files from the start, for example with `umask 077` before redirection. Version 1 uses one `registration.json`, one `attempt.json` per `writer.ID` or `reviewer.ID` directory, then `records/report` and `records/evidence` and finally `event.json`. The attempt binds role, job, conversation, manifest and (for review) canonical candidate. The event pins the exact report and evidence bytes. Publication never replaces a record. Register a fresh attempt ID for another completion or for a failed partial publication; do not edit published records. An attempt ID starts with a lowercase letter or digit and has at most 32 lowercase letters, digits, underscores or hyphens. Job and session IDs use at most 96 ASCII letters, digits, dots, underscores or hyphens and start alphanumeric. Manifest and candidate identity are limited to 2 MiB each, the session header and protocol records to 4 KiB, and each payload to 128 KiB. The watcher scans at most 256 root entries. Use `inspect` to read metadata without copying report prose into the conversation. A refusal exits 1; malformed CLI usage exits 2. Neither success nor any status grants authority.
 

@@ -42,13 +42,15 @@ def main() -> int:
         route.add_argument("stage", metavar="{writer,reviewer}")
         route.add_argument("attempt")
     attempt.add_argument("--candidate", help="canonical factory-job candidate JSON (reviewer only)")
-    publish.add_argument("outcome")
+    publish.add_argument("outcome", nargs="?", help="required for writer; for reviewer, defaults to the bound receipt verdict")
     publish.add_argument("--report", required=True)
     publish.add_argument("--evidence", required=True)
     for route in (job, attempt, publish):
         route.add_argument("--approve", action="store_true", help="authorise these new local records only")
 
     args = parser.parse_args()
+    if args.route == "publish" and args.stage == "writer" and args.outcome is None:
+        parser.error("writer outcome is required")
     try:
         if args.route == "inspect":
             result = inbox.inspect(args.registration, args.stage, args.attempt)

@@ -21,12 +21,16 @@ import unittest
 from contextlib import ExitStack, contextmanager
 
 from test_factory_inbox import (
+    EXISTS,
     EXPIRED,
     INVALID_ATTEMPT,
     INVALID_EVENT,
+    INVALID_OUTCOME,
     INVALID_REG,
+    INVALID_REQUEST,
     KIT,
     MISSING,
+    OUTCOME_CONFLICT,
     RECEIPT,
     SALT,
     UNSAFE,
@@ -428,6 +432,47 @@ class InboxE2E(unittest.TestCase):
                     worker.terminate()
                     worker.wait(timeout=3)
 
+    def test_receipt_derived_publications_deliver_once_and_refusals_deliver_nothing(self):
+        r = self.fixture()
+        with r.terminal("receipt-derived") as tty:
+            transcript = r.establish(tty)
+            r.register(transcript)
+            tty.command("enable " + str(r.registration), ENABLED)
+
+            for i, (attempt, verdict) in enumerate((("a1", "approved"), ("a2", "changes_requested"), ("a3", "blocked")), start=1):
+                r.attempt("reviewer", attempt)
+                expected = r.publish("reviewer", attempt, verdict, derive=True)
+                r.observe_notice(expected, REVIEW.format(verdict), i)
+
+            def refuse(stage, attempt, outcome, report, error, *, exit_code=1):
+                before = snapshot(r.inbox)
+                sources = (report.read_bytes(), r.evidence.read_bytes())
+                r.cli(*r.publish_args(stage, attempt, outcome, report=report), "--approve", error=error, exit_code=exit_code)
+                r.assert_no_delivery(3, error)
+                self.assertEqual(snapshot(r.inbox), before)
+                self.assertEqual((report.read_bytes(), r.evidence.read_bytes()), sources)
+
+            r.attempt("writer", "missing-outcome")
+            refuse("writer", "missing-outcome", None, r.prose, INVALID_REQUEST, exit_code=2)
+            duplicate = put(r.root / "duplicate.receipt", r.receipt("a1", "blocked"))
+            refuse("reviewer", "a1", "blocked", duplicate, EXISTS)
+
+            approved = put(r.root / "approved.receipt", r.receipt("a4", "approved"))
+            refuse("reviewer", "a4", None, approved, INVALID_ATTEMPT)
+            r.attempt("reviewer", "a4")
+            refuse("reviewer", "a4", "reported", approved, INVALID_OUTCOME)
+            unsupported = put(r.root / "unsupported.receipt", r.receipt("a4", "reported"))
+            refuse("reviewer", "a4", None, unsupported, INVALID_OUTCOME)
+            refuse("reviewer", "a4", "blocked", approved, OUTCOME_CONFLICT)
+            misbound = put(r.root / "misbound.receipt", r.receipt("a4", "approved", candidate_digest="0" * 64))
+            refuse("reviewer", "a4", None, misbound, RECEIPT)
+            expected = r.publish("reviewer", "a4", "approved", report=approved)
+            r.observe_notice(expected, REVIEW.format("approved"), 4)
+            r.assert_no_delivery(4, "corrected publication delivered more than once")
+            self.assertEqual(r.replies(), ["OFFLINE_PLANNING_REPLY"] + ["OFFLINE_CALLBACK_REPLY"] * 4)
+            self.assertEqual(tty.children(), [])
+        r.assert_offline_effects()
+
     def test_held_planning_turn_delivers_writer_and_reviewer_after_settlement(self):
         r = self.fixture()
         with r.terminal("busy") as tty:
@@ -733,7 +778,7 @@ class InboxE2E(unittest.TestCase):
         attempt = f"probe-{i:02}"
         slot = r.attempt("reviewer", attempt)
         binding = r.binding("reviewer", attempt)
-        report = r.receipt(slot, "blocked", **({"candidate_digest": "0" * 64} if field == "receipt" else {}))
+        report = r.receipt(attempt, "blocked", **({"candidate_digest": "0" * 64} if field == "receipt" else {}))
         evidence = b"x" * 131_073 if field == "oversize" else r.evidence.read_bytes()
         event = dict(binding, outcome="blocked", report_sha256=sha(report), evidence_sha256=sha(evidence))
         if value is not None:

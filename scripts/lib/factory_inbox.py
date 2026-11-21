@@ -33,6 +33,8 @@ DETAILS = {
     "invalid-attempt": "Expected a registered role and attempt with matching identity.",
     "record-exists": "An immutable runtime record already exists.",
     "invalid-payload": "Expected bounded private report and evidence files.",
+    "invalid-outcome": "Expected a supported reviewer verdict.",
+    "outcome-conflict": "Explicit reviewer outcome differs from the receipt verdict.",
     "receipt-mismatch": "Reviewer receipt does not match the registered candidate and verdict.",
     "invalid-event": "Published event or its bound records do not match.",
     "write-failed": "Could not create the private runtime records.",
@@ -258,16 +260,16 @@ def read_attempt(path: Path, job: dict, stage: str, attempt: str) -> tuple[Path,
     return slot, row
 
 
-def check_receipt(row: dict, outcome: str, report: bytes) -> None:
+def bound_receipt(row: dict, report: bytes) -> dict:
     try:
         receipt = json_object(report)
-        if (type(receipt.get("version")) is int and receipt["version"] == 1
-                and receipt.get("manifest_digest") == row["manifest_digest"]
-                and receipt.get("candidate_digest") == row["candidate_digest"] and receipt.get("verdict") == outcome):
-            return
-    except (ValueError, RecursionError):
-        pass
-    raise Refusal("receipt-mismatch")
+    except (ValueError, RecursionError) as exc:
+        raise Refusal("receipt-mismatch") from exc
+    if (type(receipt.get("version")) is not int or receipt["version"] != 1
+            or receipt.get("manifest_digest") != row["manifest_digest"]
+            or receipt.get("candidate_digest") != row["candidate_digest"]):
+        raise Refusal("receipt-mismatch")
+    return receipt
 
 
 def present(path: Path) -> bool:
@@ -278,18 +280,25 @@ def present(path: Path) -> bool:
     return True
 
 
-def publish(raw: str, stage: str, attempt: str, outcome: str, report_file: str, evidence_file: str) -> dict:
+def publish(raw: str, stage: str, attempt: str, outcome: str | None, report_file: str, evidence_file: str) -> dict:
     path, job = registration(raw)
     slot, row = read_attempt(path, job, stage, attempt)
-    if outcome not in STAGES[stage]:
+    if stage == "writer" and outcome not in STAGES[stage]:
         raise Refusal("invalid-attempt")
+    if stage == "reviewer" and outcome is not None and outcome not in STAGES[stage]:
+        raise Refusal("invalid-outcome")
     records = slot / "records"
     if present(records) or present(slot / "event.json"):
         raise Refusal("record-exists")
     report = source(report_file, PAYLOAD, "invalid-payload")
-    evidence = source(evidence_file, PAYLOAD, "invalid-payload")
     if stage == "reviewer":
-        check_receipt(row, outcome, report)
+        verdict = bound_receipt(row, report).get("verdict")
+        if verdict not in STAGES[stage]:
+            raise Refusal("invalid-outcome")
+        if outcome is not None and outcome != verdict:
+            raise Refusal("outcome-conflict")
+        outcome = verdict
+    evidence = source(evidence_file, PAYLOAD, "invalid-payload")
     fresh(job["expires_ms"])
     terminal = dict(row, outcome=outcome, report_sha256=contract.sha256_bytes(report),
                     evidence_sha256=contract.sha256_bytes(evidence))
@@ -326,6 +335,6 @@ def inspect(raw: str, stage: str | None, attempt: str | None) -> dict:
             raise ValueError("payload digest mismatch")
     except (OSError, Refusal, ValueError, RecursionError) as exc:
         raise Refusal("invalid-event") from exc
-    if stage == "reviewer":
-        check_receipt(row, event["outcome"], report)
+    if stage == "reviewer" and bound_receipt(row, report).get("verdict") != event["outcome"]:
+        raise Refusal("receipt-mismatch")
     return stored_status("published", event)

@@ -28,6 +28,9 @@ INVALID_REG = "invalid-registration: Expected a private version 1 job registrati
 EXPIRED = "expired-registration: The job registration has expired."
 UNSAFE = "unsafe-path: Use an absolute, canonical path with safe directory ancestry."
 INVALID_ATTEMPT = "invalid-attempt: Expected a registered role and attempt with matching identity."
+INVALID_REQUEST = "invalid-request: Check route arguments with --help."
+INVALID_OUTCOME = "invalid-outcome: Expected a supported reviewer verdict."
+OUTCOME_CONFLICT = "outcome-conflict: Explicit reviewer outcome differs from the receipt verdict."
 RECEIPT = "receipt-mismatch: Reviewer receipt does not match the registered candidate and verdict."
 INVALID_EVENT = "invalid-event: Published event or its bound records do not match."
 EXISTS = "record-exists: An immutable runtime record already exists."
@@ -43,7 +46,7 @@ def sha(data):
 
 
 def put(path, data, mode=0o600):
-    with path.open("xb") as handle:
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as handle:
         handle.write(packed(data) if isinstance(data, dict) else data)
     path.chmod(mode)
     return path
@@ -292,27 +295,36 @@ class Records:
         self.test.assertEqual(row, self.binding(stage, attempt))
         return self.inbox / f"{stage}.{attempt}"
 
-    def receipt(self, slot, outcome, **changes):
-        binding = json.loads((slot / "attempt.json").read_bytes())
+    def receipt(self, attempt, outcome, **changes):
+        binding = self.binding("reviewer", attempt)
         receipt = {"version": 1, "manifest_digest": binding["manifest_digest"], "candidate_digest": binding["candidate_digest"],
                    "verdict": outcome, "reviewer": {"model": "fixture-only", "worktree": str(self.root / "no-reviewer")},
                    "findings": [], "verification": [], "mutations": [], "not_verified": [SALT]}
         return packed(receipt | changes)
 
-    def publish_args(self, stage, attempt, outcome, *, report=None, evidence=None):
-        return ("publish", self.registration, stage, attempt, outcome, "--report", report or self.prose,
+    def publish_args(self, stage, attempt, outcome=None, *, report=None, evidence=None):
+        explicit = () if outcome is None else (outcome,)
+        return ("publish", self.registration, stage, attempt, *explicit, "--report", report or self.prose,
                 "--evidence", evidence or self.evidence)
 
-    def publish(self, stage, attempt, outcome):
+    def publish(self, stage, attempt, outcome, *, derive=False, report=None):
         slot = self.inbox / f"{stage}.{attempt}"
-        report = put(self.root / f"{slot.name}.receipt", self.receipt(slot, outcome)) if stage == "reviewer" else self.prose
-        actual = self.cli(*self.publish_args(stage, attempt, outcome, report=report), "--approve", status="published")
-        expected = dict(self.binding(stage, attempt), outcome=outcome, report_sha256=sha(report.read_bytes()),
-                        evidence_sha256=sha(self.evidence.read_bytes()))
+        if report is None:
+            report = (put(self.root / f"{slot.name}.receipt", self.receipt(attempt, outcome))
+                      if stage == "reviewer" else self.prose)
+        report_bytes, evidence_bytes = report.read_bytes(), self.evidence.read_bytes()
+        binding = self.binding(stage, attempt)
+        expected = dict(binding, outcome=outcome, report_sha256=sha(report_bytes), evidence_sha256=sha(evidence_bytes))
+        actual = self.cli(*self.publish_args(stage, attempt, None if derive else outcome, report=report),
+                          "--approve", status="published")
         self.test.assertEqual(actual, expected)
-        self.test.assertEqual((slot / "event.json").read_bytes(), packed(expected))
-        self.test.assertEqual((slot / "records/report").read_bytes(), report.read_bytes())
-        self.test.assertEqual((slot / "records/evidence").read_bytes(), self.evidence.read_bytes())
+        for name, payload in (("attempt.json", packed(binding)), ("event.json", packed(expected))):
+            path = slot / name
+            self.test.assertEqual((stat.S_IMODE(path.stat().st_mode), path.read_bytes()), (0o400, payload), name)
+        records = slot / "records"
+        self.test.assertEqual(stat.S_IMODE(records.stat().st_mode), 0o700)
+        self.test.assertEqual(tree(records), {"report": (0o400, report_bytes), "evidence": (0o400, evidence_bytes)})
+        self.test.assertEqual((report.read_bytes(), self.evidence.read_bytes()), (report_bytes, evidence_bytes))
         return expected
 
 
@@ -339,7 +351,7 @@ class PublisherTest(unittest.TestCase):
         for args in ((), ("nonexistent",), ("inspect",), ("register",), ("register", "job"),
                      ("register", "attempt"), ("publish",)):
             with self.subTest(invalid_request=args):
-                r.cli(*args, error="invalid-request: Check route arguments with --help.", exit_code=2)
+                r.cli(*args, error=INVALID_REQUEST, exit_code=2)
         before = tree(r.inbox)
         for args in (r.job_args(self.session_file), r.attempt_args("writer", "a1"), r.publish_args("writer", "a1", "reported")):
             with self.subTest(route=args[:2]):
@@ -415,17 +427,62 @@ class PublisherTest(unittest.TestCase):
         for path in (r.registration, slot / "attempt.json", slot / "event.json", slot / "records/report", slot / "records/evidence"):
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o400, path)
 
-    def test_actual_receipt_mismatch_details_and_reuse_attempt(self):
+    def test_writer_outcome_is_required_and_both_explicit_forms_still_publish(self):
+        r = self.r
+        r.register(self.session_file)
+        for outcome in ("reported", "blocked"):
+            with self.subTest(outcome=outcome):
+                r.attempt("writer", outcome)
+                before = tree(r.inbox)
+                r.cli(*r.publish_args("writer", outcome), "--approve", error=INVALID_REQUEST, exit_code=2)
+                self.assertEqual(tree(r.inbox), before)
+                r.publish("writer", outcome, outcome)
+
+    def test_reviewer_refusals_preserve_input_and_allow_matching_explicit_call(self):
+        r = self.r
+        r.register(self.session_file)
+        cases = (
+            ("writer-only", "reported", {}, INVALID_OUTCOME),
+            ("unsupported", None, {"verdict": "reported"}, INVALID_OUTCOME),
+            ("wrong-verdict-type", None, {"verdict": ["approved"]}, INVALID_OUTCOME),
+            ("conflict", "changes_requested", {}, OUTCOME_CONFLICT),
+            ("candidate", None, {"candidate_digest": "a" * 64}, RECEIPT),
+            ("manifest", "approved", {"manifest_digest": "b" * 64}, RECEIPT),
+            ("version", None, {"version": True}, RECEIPT),
+            ("malformed", None, None, RECEIPT),
+        )
+        for attempt, explicit, changes, error in cases:
+            with self.subTest(attempt=attempt):
+                r.attempt("reviewer", attempt)
+                report_bytes = b'{"version":1' if changes is None else r.receipt(attempt, "approved", **changes)
+                report = put(r.root / f"{attempt}.refused", report_bytes)
+                evidence = r.evidence.read_bytes()
+                before = tree(r.inbox)
+                r.cli(*r.publish_args("reviewer", attempt, explicit, report=report), "--approve", error=error)
+                self.assertEqual(tree(r.inbox), before)
+                self.assertEqual((report.read_bytes(), r.evidence.read_bytes()), (report_bytes, evidence))
+                r.publish("reviewer", attempt, "approved", report=report if changes == {} else None)
+
+    def test_reviewer_requires_registered_attempt_even_when_deriving(self):
+        r = self.r
+        r.register(self.session_file)
+        report = put(r.root / "unknown.receipt", r.receipt("unknown", "approved"))
+        before = tree(r.inbox)
+        r.cli(*r.publish_args("reviewer", "unknown", report=report), "--approve", error=INVALID_ATTEMPT)
+        self.assertEqual(tree(r.inbox), before)
+        r.attempt("reviewer", "unknown")
+        r.publish("reviewer", "unknown", "approved", derive=True, report=report)
+
+    def test_reviewer_duplicate_preserves_publication_and_inspect_checks_records(self):
         r = self.r
         r.register(self.session_file)
         slot = r.attempt("reviewer", "a1")
+        expected = r.publish("reviewer", "a1", "approved", derive=True)
         before = tree(r.inbox)
-        for field, value in (("candidate_digest", "a" * 64), ("manifest_digest", "b" * 64), ("verdict", "blocked")):
-            with self.subTest(field=field):
-                path = put(r.root / field, r.receipt(slot, "approved", **{field: value}))
-                r.cli(*r.publish_args("reviewer", "a1", "approved", report=path), "--approve", error=RECEIPT)
-                self.assertEqual(tree(r.inbox), before)
-        expected = r.publish("reviewer", "a1", "approved")
+        alternate = put(r.root / "alternate.receipt", r.receipt("a1", "blocked"))
+        evidence = put(r.root / "alternate.evidence", b"different evidence\n")
+        r.cli(*r.publish_args("reviewer", "a1", "blocked", report=alternate, evidence=evidence), "--approve", error=EXISTS)
+        self.assertEqual(tree(r.inbox), before)
         self.assertEqual(r.cli("inspect", r.registration, "reviewer", "a1", status="published"), expected)
         terminal = slot / "event.json"
         original = terminal.rename(slot / "valid-event")
@@ -440,7 +497,7 @@ class PublisherTest(unittest.TestCase):
         r = self.r
         r.register(self.session_file)
         slot = r.attempt("reviewer", "inspect-receipt")
-        report = r.receipt(slot, "approved", candidate_digest="e" * 64)
+        report = r.receipt("inspect-receipt", "approved", candidate_digest="e" * 64)
         records = slot / "records"
         records.mkdir(mode=0o700)
         put(records / "report", report, 0o400)
