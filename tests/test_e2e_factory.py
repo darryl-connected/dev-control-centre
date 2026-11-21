@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from test_e2e_factory_inbox import ENABLED, WRITER, PiFixture, opened
+from test_factory_inbox import CLI, evidence_dir, put, tree
 from test_factory_job import BASE_CONTENTS, Fixture, clean_env, digest
 
 PACKAGE = Path(__file__).resolve().parent.parent
@@ -27,6 +30,20 @@ EXPECTED_MEMBERS = {
     "docs/pi-setup.md", "scripts/setup.py", "scripts/verify-pi-resources.mjs",
     "skills/setup/SKILL.md", "skills/factory/SKILL.md", "skills/grilling/SKILL.md",
     "tests/test_setup.py", "tests/test_e2e_pi_setup.py",
+    "docs/knowledge-hub.md", "scripts/knowledge.py", "scripts/lib/knowledge_hub.py",
+    "tests/test_knowledge.py", "tests/test_e2e_knowledge.py",
+    "docs/factory-handoff.md", "extensions/factory-inbox.ts", "scripts/factory-inbox.py",
+    "scripts/lib/factory_inbox.py", "tests/test_factory_inbox.py", "tests/test_e2e_factory_inbox.py",
+    "tests/fixtures/factory-inbox-provider.ts",
+    "docs/clickup.md", "references/clickup-api.md", "scripts/clickup.py", "scripts/lib/clickup_reader.py",
+    "tests/test_clickup.py", "tests/test_e2e_clickup.py",
+    "docs/task-preparation.md", "scripts/prepare.py", "scripts/lib/task_preparation.py",
+    "tests/test_prepare.py", "tests/test_e2e_prepare.py",
+}
+EXPECTED_EXECUTABLES = {
+    "scripts/build.py", "scripts/factory-alignment.py", "scripts/factory-inbox.py", "scripts/factory-job.py",
+    "scripts/clickup.py", "scripts/knowledge.py", "scripts/prepare.py", "scripts/setup.py", "scripts/validate-brief.py", "tests/test_factory_job.py",
+    "tests/test_validate_brief.py",
 }
 
 
@@ -72,6 +89,7 @@ class DistributionTest(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with handle:
                     path.write_bytes(handle.read())
+                path.chmod(member.mode)
         return relocated
 
     def test_relocated_cli_snapshots_renders_and_preflights(self) -> None:
@@ -145,14 +163,18 @@ class DistributionTest(unittest.TestCase):
             path = source / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(PACKAGE / relative, path)
+        private_sentinels = {}
         for relative in (
             ".git/HEAD", "auth.json", ".pi/agent/auth.json", "scratch/live.json", ".venv/bin/python",
             ".ruff_cache/sentinel", "scripts/__pycache__/factory.pyc", "original-kit/README.md",
             ".pi/settings.json", ".pi/APPEND_SYSTEM.md", ".pi/agent/trust.json", ".dcc/workspace.json",
+            ".dcc/knowledge.json", "external-evidence/session.json", "synthetic-private-source/context/private.md",
+            "registration.json", "writer.a1/attempt.json", "reviewer.a2/event.json", "reviewer.a2/records/evidence",
         ):
             path = source / relative
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("dummy sentinel, never distribute\n", encoding="utf-8")
+            private_sentinels[relative] = f"DCC_EXCLUDED_SENTINEL:{relative}\n".encode()
+            path.write_bytes(private_sentinels[relative])
         settings = self.home / ".pi/agent/APPEND_SYSTEM.md"
         settings.parent.mkdir(parents=True)
         settings.write_text("leave existing developer settings unchanged\n", encoding="utf-8")
@@ -164,8 +186,14 @@ class DistributionTest(unittest.TestCase):
         self.assertEqual(list(self.cwd.iterdir()), [])
         with tarfile.open(artifact, "r:gz") as archive:
             self.assertCountEqual(archive.getnames(), EXPECTED_MEMBERS)
+            for member in archive.getmembers():
+                self.assertEqual(member.mode, 0o755 if member.name in EXPECTED_EXECUTABLES else 0o644, member.name)
         root = self.extract(artifact)
-        self.assertEqual(regular_files(root), {path: before_source[path] for path in EXPECTED_MEMBERS})
+        extracted = regular_files(root)
+        self.assertEqual(extracted, {path: before_source[path] for path in EXPECTED_MEMBERS})
+        for sentinel_path, marker in private_sentinels.items():
+            self.assertNotIn(sentinel_path, extracted)
+            self.assertFalse(any(marker in contents for contents in extracted.values()), sentinel_path)
         self.assertEqual(digest((root / "docs/scope.md").read_bytes()), SCOPE_SHA256)
         license_text = (root / "LICENSE").read_text(encoding="utf-8")
         for phrase in (
@@ -173,6 +201,58 @@ class DistributionTest(unittest.TestCase):
             "Permission is hereby granted", "THE SOFTWARE IS PROVIDED \"AS IS\"",
         ):
             self.assertIn(phrase, license_text)
+
+
+class RelocatedHandoffTest(unittest.TestCase):
+    def test_relocated_adapter_and_publisher_read_shipped_code_with_original_denied(self) -> None:
+        evidence = evidence_dir("handoff-relocation-")
+        output = evidence / "dist"
+        result = subprocess.run([sys.executable, "-B", str(PACKAGE / "scripts/build.py"), "--output", str(output)],
+                                check=False, capture_output=True, text=True, timeout=20, env=clean_env(evidence))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        relocated = evidence / "relocated kit"
+        with tarfile.open(output / ARCHIVE, "r:gz") as archive:
+            self.assertCountEqual(archive.getnames(), EXPECTED_MEMBERS)
+            for member in archive.getmembers():
+                self.assertTrue(member.isfile(), member.name)
+                path = relocated / member.name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                handle = archive.extractfile(member)
+                assert handle is not None
+                put(path, handle.read(), member.mode)
+        data = evidence / "fixture-data"
+        data.mkdir(mode=0o700)
+        outside = evidence / "unrelocated-source"
+        outside.mkdir(mode=0o700)
+        blocked_exe = put(outside / "helper", b"#!/bin/sh\nprintf 'outside helper ran\\n'\n", 0o700)
+        probe = subprocess.run([str(blocked_exe)], check=True, capture_output=True, text=True, timeout=5)
+        self.assertEqual(probe.stdout, "outside helper ran\n")
+        original = PACKAGE / "extensions/factory-inbox.ts"
+        self.assertEqual(original.read_bytes(), (relocated / "extensions/factory-inbox.ts").read_bytes())
+        self.assertTrue((PACKAGE / CLI).is_file())
+        native = Path(os.environ["DCC_PI_EXECUTABLE"]).resolve()
+        python = Path(sys.executable).resolve()
+        launcher = (sys.executable, "-B", str(relocated / "tests/test_factory_inbox.py"), "--confined-exec",
+                    str(data), str(relocated), str(original), str(blocked_exe),
+                    str(native), str(native.parent), str(python), sys.base_prefix, sys.prefix, "--")
+        r = PiFixture(self, data, relocated, launcher)
+        before = tree(relocated)
+        external_before = tree(outside)
+        with opened(relocated / "extensions/factory-inbox.ts") as extension_reads, r.terminal("relocated") as tty:
+            transcript = r.establish(tty)
+            self.assertTrue(extension_reads(), "Pi never opened the dist's extension")
+            with opened(relocated / CLI) as cli_reads, opened(relocated / "scripts/lib/factory_inbox.py") as lib_reads:
+                r.register(transcript)
+                r.attempt("writer", "a1")
+                expected = r.publish("writer", "a1", "reported")
+                self.assertTrue(cli_reads(), "Producer never opened the dist's CLI")
+                self.assertTrue(lib_reads(), "Producer never opened the dist's protocol library")
+            tty.command("enable " + str(r.registration), ENABLED)
+            r.observe_notice(expected, WRITER, 1)
+            self.assertEqual(tty.children(), [])
+        self.assertEqual(tree(relocated), before)
+        self.assertEqual(tree(outside), external_before)
+        r.assert_offline_effects()
 
 
 if __name__ == "__main__":

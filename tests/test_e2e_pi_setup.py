@@ -190,6 +190,12 @@ syncBuiltinESMExports();
             self.assertNotRegex(entry["userText"].replace(str(self.relocated), "<kit>").lower(), PRIVATE_MARKERS)
             for clause in SKILL_CLAUSES[name]:
                 self.assertIn(clause, entry["userText"], name)
+            if name == "setup":
+                for target in ("docs/knowledge-hub.md", "scripts/knowledge.py"):
+                    relative = os.path.relpath(self.relocated / target, path.parent)
+                    self.assertIn(f"]({relative})", entry["userText"])
+                    self.assertTrue((self.relocated / target).is_file())
+                self.assertIn("An explicit PRD lookup returns an index of citations, not task context or approval", entry["userText"])
             if name == "factory":
                 expected = {"factory/COORDINATOR.md", "factory/WORKER.md", "factory/REVIEWER.md",
                             "references/factory-contract.md", "scripts/factory-job.py", "scripts/factory-alignment.py"}

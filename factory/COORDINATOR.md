@@ -4,6 +4,8 @@ The developer's Pi session is the coordinator, not a writer. The operating devel
 
 This package supplies offline contract and gate commands plus briefing resources. The [factory skill](../skills/factory/SKILL.md) points to these same resources; the [Pi setup guide](../docs/pi-setup.md) covers local registration and the offline SDK loading probe. Provisioning Pi and Herdr, launching sessions, routing models, assembling or applying job changes, and cleaning up are not implemented here. Do not infer tool, filesystem, process, or network isolation from registration, instructions, worktrees or gate results.
 
+Optional [factory handoff notices](../docs/factory-handoff.md) replace polling, not dispatch. Under the approved brief the coordinator orchestrates dispatch, validates the exact candidate, starts independent review and routes eligible repairs. An inbox notice does not grant launch or integration authority. Enable explicitly for this one persistent conversation and approved job, using the approved coordinator allowance for callback turns. Disable without stopping workers or losing records; manual coordination remains available.
+
 ## Job sequence
 
 1. Inspect the target rules and the task's source requirements, decisions, code and relevant context. Surface conflicts. Ask focused questions one at a time after reading the sources. For a blocked requirement, describe the dependency; proceed on an independent slice only with its own acceptance criteria and developer approval.
@@ -13,6 +15,21 @@ This package supplies offline contract and gate commands plus briefing resources
 5. Ask the original writer to repair in their own worktree, and review the exact revised candidate again. Allow at most two repair-and-review rounds inside the total approved scope and budget. Stop and escalate on drift, missing prerequisites, exhaustion, an unexercisable critical guard or a fix needing new scope, paths or budget. Never weaken a guard to fit the implementation. Escalate repeat defect classes into contract review before the next job.
 6. Read the review report and record its attestation; run `scripts/factory-job.py integration` before any approved application of changes. It checks exact file identity and recorded evidence, not reviewer authenticity or correctness. Confirm the handoff matches reviewed bytes and modes. Keep the accepted result uncommitted. Never automatically commit. Explicit approval is required for commits, pushes, publishing, deploys, history rewrites, cleanup and other external or destructive actions.
 7. Report the result, changed files, commands and exact exits, failed-guard demonstrations, findings, skips and NOT VERIFIED items, remaining approvals, time and tool calls. Record preflight/integration durations and manifest/receipt authoring minutes with the job's local evidence.
+
+## Inbox closeout checklist
+
+Follow the [inbox cleanup policy](../docs/factory-handoff.md#inbox-cleanup-at-verified-job-closeout) only with explicit operating-developer approval for the exact removal scope. Job launch, notice delivery, expiry or disabling notifications is not cleanup approval. This is a manual closeout procedure, not automated cleanup.
+
+- Verify the job is closed, its notice producers have finished and no notices are pending. Leave active or unclear inboxes alone.
+- Verify that the result, receipts, audit and supporting evidence are retained separately from the selected transport files. Inbox report/evidence payloads are not disposable notices; obtain approval and verify retained bytes before removing any source copy.
+- With those checks satisfied, no grace period is required. Remove only the explicitly identified and approved transport files, never the whole inbox or other jobs' files.
+- Record the removal and verify the retained job records and evidence are unchanged. Stop without deleting if any check is uncertain. Do not change adapters, bindings or storage paths; meeting/Fathom inboxes are excluded.
+
+## Coordinator budget policy
+
+Do not impose a separate coordinator minute allowance by default. Declare an approved shared active-time budget, coordinator tool-call cap and total job-call cap in each job's brief. Coordinator active work draws from that shared time budget; idle waiting for roles or human approval does not. Preserve individual writer/reviewer time and call limits and the approved repair limit. Numeric limits are job-specific, not inherited spending permission.
+
+Stop when a shared or call limit is exhausted, or when scope, paths, roles or models require new approval. Record the accounting basis and identify separately requested policy/admin work; do not hide spending by relabelling it. Neither an inbox notice nor a passing gate extends allowance. This is an operating procedure, not runtime quota enforcement by the existing manifest gate.
 
 ## Model allowance (D25–D26)
 

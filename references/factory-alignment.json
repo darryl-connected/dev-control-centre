@@ -15,7 +15,7 @@
     {
       "path": "README.md",
       "section": null,
-      "sha256": "07859f765770d5ca48bf26dcc20318acfd65af49b9c53d028ad0a6e3644621b7"
+      "sha256": "c1707e50b61f63d46a79fb8bd33bb684dec99438549333d9a8bd23f6bf22c6f1"
     },
     {
       "path": "docs/scope.md",
@@ -25,17 +25,17 @@
     {
       "path": "factory/COORDINATOR.md",
       "section": null,
-      "sha256": "f6f87288fe23a74f1eea9a92af81334ed89db3dcab4fc0a59304f8bf40a66939"
+      "sha256": "ce7ab0e0f1fdc5e82e034e0565f481d3b8f0d161d4bd7f0c7bf17032c505a952"
     },
     {
       "path": "factory/WORKER.md",
       "section": null,
-      "sha256": "0c3449d4961b8c28138dcfd4a517e6baeafc407e0e013f98cebf7c68dc302f18"
+      "sha256": "73258bbfea712e21c50750f588ec53fba7f494721e143b06a8b339c76223f4bc"
     },
     {
       "path": "factory/REVIEWER.md",
       "section": null,
-      "sha256": "fd9f78e0b502b84057720d33ad2b7ba53b713bab3fd20714ce141f3f67c02613"
+      "sha256": "4040e00130fa71c32001978048b410c27211fce88f54f42207c489c7602acff4"
     },
     {
       "path": "requirements-dev.txt",
@@ -45,7 +45,7 @@
     {
       "path": "scripts/build.py",
       "section": null,
-      "sha256": "7eb80a7e023ae1ebc59f290ec98a8d083a988467d2bff899490d61e007fe1417"
+      "sha256": "85d86d3f974e5ad54809037507555c158a601eed2948924eabae9d4b336adc4d"
     },
     {
       "path": "scripts/lib/factory_contract.py",
@@ -85,12 +85,12 @@
     {
       "path": "tests/test_instruction_packaging.py",
       "section": null,
-      "sha256": "4012b8030c1bf0fe328ceb677aca5c73bc2d2a2abce24885ec7e0a38c4d61628"
+      "sha256": "e70a8cd1be5e406f483bed62280513cc8893c6d9c2e22db8d089cfa9904be4ee"
     },
     {
       "path": "tests/test_e2e_factory.py",
       "section": null,
-      "sha256": "0d6ff0af0c2de0c1451187b6bfc0cf3ad27a1d24d648244f7fbbf157453ba3fa"
+      "sha256": "b82433a3aa59bef16ecd4708ffa7064cd404aab69459e33e4e5634042111eac2"
     },
     {
       "path": "templates/pi/APPEND_SYSTEM.md",

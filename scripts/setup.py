@@ -15,6 +15,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+
+from knowledge_hub import readiness as knowledge_readiness
+
 KIT = Path(__file__).resolve().parents[1]
 SKILLS = ("setup", "factory", "grilling")
 SHADOW = (
@@ -258,13 +262,14 @@ def inspect(workspace: Path, entries: list[str]) -> tuple[dict, dict[Path, bytes
         "workspace_configuration": "configured" if all(item["action"] == "unchanged" for item in actions.values()) else "planned",
         "local_checks": {"pi": command("pi", "--version"), "herdr": command("herdr", "--version"), "repositories": repo_results},
         "capabilities": {
-            "knowledge_integration": "deferred until after A14; not an A14 blocker",
+            "knowledge_integration": knowledge_readiness(workspace, (KIT, *(Path(path) for path in repos.values()))),
+            "shared_meeting_notes": "not established; deferred",
             "fathom": "optional; NOT VERIFIED",
-            "clickup": "blocked: read-only integration not implemented",
-            "context_retrieval": "blocked: not implemented",
+            "clickup": "standalone read-only reader available; authentication not checked",
+            "context_retrieval": "selected-task preparation available locally; no task assessment observed by setup",
             "live_factory": "unsupported: not implemented",
             "provider_fallback": "unsupported: not implemented",
-            "full_task_start": "blocked: not implemented",
+            "full_task_start": "blocked: OpenSpec drafting and live factory launch are unsupported",
         },
         "workflow": "blocked; registration is not overall workflow readiness or launch permission",
         "verification": {

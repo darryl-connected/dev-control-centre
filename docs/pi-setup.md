@@ -7,7 +7,7 @@ This slice configures a personal workspace and registers the kit's three skills.
 - Python 3.10+ and Git, with trusted local installations and Git checkout roots. No Python runtime dependencies. Use physical paths (`pwd -P`) instead of symlinks.
 - The project configuration targets Pi 1.4.0. Pi and Herdr must be supplied separately. Setup records `pi --version` and `herdr --version` if available; successful output proves only the local commands ran. No Herdr version has been validated for live operation in this slice. A missing or failing executable is reported as blocked; it does not prevent writing a valid, approved local configuration.
 - The offline loading probe needs Node.js 22.19+ and the separately provisioned `@earendil-works/pi-coding-agent` SDK **1.4.0** with its dependencies, not just a native Pi executable. Neither setup nor the probe installs packages, queries registries or talks to a provider.
-- ClickUp (read-only), context retrieval and full task start are blocked/not implemented. Live Herdr orchestration and provider fallback are unsupported. Personal Fathom is optional, not tested. Knowledge integration is deferred until after A14; no location is needed now. A local configuration or passing probe does not make the workflow ready or authorize launch.
+- The [standalone ClickUp reader](clickup.md) is read-only and available for a developer-selected task. Setup makes no ClickUp request, does not ask for credentials and does not check authentication. The [selected-task preparation CLI](task-preparation.md) is available locally. Setup does not perform or observe a task assessment. OpenSpec drafting and live factory launch remain unsupported. Live Herdr orchestration and provider fallback are unsupported. Personal Fathom is optional, not tested. The [local knowledge mapping and source index](knowledge-hub.md) are optional. Ordinary setup does not request a knowledge location; explicit knowledge configuration only needs the local checkout path if absent. Setup can observe a clean mapped checkout, not a selected-source lookup. Shared meeting notes are not established and remain deferred. A local configuration or passing probe does not make the workflow ready or authorize launch.
 
 ## Inspect, approve and apply
 
@@ -38,6 +38,10 @@ HOME="$FIXTURE_ROOT/home" node scripts/verify-pi-resources.mjs --fixture-root "$
 ```
 
 The probe runs the real Pi loader with trust granted and denied in memory; it does not save trust. It records the effective prompts, resource paths, hashes, diagnostics and actual `/skill:setup`, `/skill:factory` and `/skill:grilling` command expansions with caller arguments. A local Pi faux provider records the pre-model context and returns a synthetic response without calling tools or a live model. Missing dependencies or bad resource linkage are failures, not skips. The supplied instructions do not sandbox future tool use. This probe is not CLI/TUI parity, a credential check or a conversation test.
+
+## Optional local handoff notices
+
+[Factory handoff](factory-handoff.md) is separate from setup registration. It uses an explicit per-process `pi -e` and per-conversation opt-in for a developer-approved job; setup does not install or enable it. The inbox only notifies. Linux offline TUI evidence for that adapter does not complete the prepared Mac exercise.
 
 ## Fresh Mac checklist (manual, NOT VERIFIED)
 

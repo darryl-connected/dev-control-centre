@@ -11,4 +11,6 @@ Follow A1–A8 in the coordinator instructions, including requirement-derived ob
 
 The operating developer approves launch, provider switches, scope or budget changes, external or destructive actions, and commits. A ready verdict or green preflight is not launch approval. This entry point supplies offline preparation only. Live Herdr orchestration and provider fallback are not implemented. Do not launch agents or worktrees, switch providers, install dependencies, commit, push, publish or clean up from this skill. Pause for the developer at the boundary; planning and review keep their established models. The worker-only fallback policy in the coordinator is not proof of routing.
 
+For a separately approved job, the coordinator may opt into [local handoff notices](../../docs/factory-handoff.md). The adapter only notifies; it does not dispatch work or grant approval. Manual coordination remains available.
+
 Record exact observations, exits, and skips. These instructions and offline gates do not establish model obedience, process isolation, or successful live execution.

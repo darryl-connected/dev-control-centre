@@ -1,0 +1,29 @@
+# Optional local knowledge hub
+
+Use this adapter to map an existing local source checkout and locate the evidence for one selected PRD. The index is not a full-text export, a summary, task preparation or permission to launch. Shared meeting notes are not established and remain deferred. No ClickUp, Fathom, credential, publisher or provider operations run here.
+
+## Inspect, approve, apply
+
+Start with an existing [A14 workspace](pi-setup.md) and an independently supplied, clean, physical Git checkout with its own `.git` directory. Keep the checkout separate from the kit, workspace and mapped code targets. Use `pwd -P` paths on systems with symlinked directories. No checkout URL is needed. Only for explicit knowledge configuration, supply the missing local checkout path. A14 setup without a mapping is still available.
+
+```sh
+python3 -B scripts/knowledge.py inspect --workspace "$WORKSPACE" \
+  --checkout "$LOCAL_HUB" > "$EXTERNAL_PLAN"
+python3 -B scripts/knowledge.py apply --plan "$EXTERNAL_PLAN" --approve
+python3 -B scripts/knowledge.py sources --workspace "$WORKSPACE" --prd PRD123
+```
+
+Keep plans and indexes outside the kit, workspace and repositories and share them only with authorized readers: local paths and citation metadata can themselves be private. Inspect does not write. Review the exact plan and separately approve apply; apply rechecks the plan and creates only `.dcc/knowledge.json` in the existing workspace. It does not merge, overwrite or migrate settings or mappings. An identical mapping can remain unchanged. Use a fresh inspect after applying; omit `--checkout` to inspect a saved mapping. Resolve a conflicting mapping outside this tool, without asking it to overwrite anything.
+
+Update the source checkout manually, outside this tool, using your own approved workflow. The saved mapping is a path, not a pin or approval of new requirements. Each lookup records its own observed HEAD. Ordinary setup distinguishes not configured, a locally mapped clean checkout with no lookup observed, and blocked. Only successful `sources` reports an observed source lookup.
+
+## Bounded navigation syntax
+
+- Read the `Available sources` section of `knowledge-hub/prds/source-map.md`. Its four columns are `ID and area`, `Organization PRD in this checkout`, `Working context`, and `What the local evidence says`. Select one row by a literal `PRD` plus three digits at the start of the first cell, not by matching a context filename. The organization cell links the protected export in `prds/active/<PRD-ID>/` first, then any supplied change records in `prds/changelogs/`. The context cell links one or more files in the repository's `context/` folder. A declaration of no local PRD blocks selection.
+- The selected source cells use inline `[label](local.md)` links separated by semicolons. Wrap paths containing spaces or parentheses in angle brackets, for example `[export](<./active/PRD123/Example (draft).md>)`. Relative `.` and `..` are allowed only within the Git root. Single percent decoding is supported. An optional `#simple-heading` fragment must match one ATX Markdown heading (lowercase heading text with punctuation removed and spaces replaced by hyphens). Links are never interpreted as commands.
+- The `knowledge-hub/index.md` registry uses `Category`, `Document Name`, `Status`, `Owner`, `Last Updated`, and `Link`. It must corroborate the selected PRD and change paths and list the architecture documents. The index also cites root/Hub instructions and guides, Hub change history, PRD protection rules, and architecture navigation. Consolidated `architecture.md` and `questions.md` are shared citations. The selected `architecture/active/<PRD-ID>/` must contain one `r<number>` revision with `architecture.md` and `questions.md`. Include registered API contracts, data schema, diagrams, revision changelog and future improvements when present. Do not select locked, archived or unrelated revisions.
+- This is not a general Markdown or YAML renderer. Selected links cannot use titles, reference definitions, wiki links, HTML anchors, escaped or embedded table pipes, nested labels, or unwrapped paths with spaces or parentheses. Absolute paths, file URLs, escapes, symlinks and gitlinks cannot supply a selected source. Other external references are not fetched or followed; URLs cannot fill required local roles. Unrelated map entries are not looked up. Unsupported selected forms and missing or ambiguous selected paths block with a diagnostic; newer-looking filenames are never substituted.
+
+Each document citation has a role, exact repository-relative path, commit, SHA-256 and line/section references; the map and registry citations identify relevant rows. Registry status text and simple status frontmatter are attributed to their source and line. Conflicts are not reconciled by the tool. Read the affected sources in full and resolve material contradictions with the decision owner. A draft, sign-off claim or maintained label is not independent approval, evidence of deployment, or workflow readiness.
+
+The tool uses local trusted Git and file reads, declines unsafe Git configuration (including configured clean/process filters and config includes), and uses no checkout updates, source scripts or Git network commands. Linked Git worktrees and shared object alternates are unsupported. Normal Git cleanliness checks exclude ignored files and do not enter submodules; selected bytes must still match their committed blobs. Checkout bytes transformed by line-ending or other conversions do not qualify when they differ from the blob. Individual selected documents are limited to 4 MiB. HEAD and selected bytes are rechecked during observation; this is not a concurrency-safe atomic snapshot, OS isolation or a test of future freshness. Use a trusted checkout without concurrent changes.

@@ -86,7 +86,7 @@ class SetupFixture:
                   "    raise SystemExit(0)\n"
                   "print('forbidden fixture command', name, args, file=sys.stderr)\n"
                   "raise SystemExit(97)\n", 0o700)
-        self.cli_results = []
+        self.cli_results: list[dict[str, tuple[str, ...] | int | str]] = []
 
     def git(self, exe: str, repo: Path, *args: str) -> str:
         return subprocess.run([exe, "-C", str(repo), *args], env=clean_env(self.home),
@@ -165,9 +165,9 @@ class SetupTest(unittest.TestCase):
 
     def assert_technical_request_only(self, text: str) -> None:
         # Inspect the actual request/error text, not structured capability data (which
-        # legitimately reports deferred knowledge) or local paths echoed in errors.
+        # legitimately reports optional knowledge) or local paths echoed in errors.
         diagnostic = text.replace(str(self.fx.root), "<fixture>").replace(str(KIT), "<kit>")
-        self.assertNotRegex(diagnostic.lower(), r"\b(?:business|identity|voice|revenue|knowledge|seven[- ]question)\b",
+        self.assertNotRegex(diagnostic.lower(), r"\b(?:business|identity|voice|revenue|knowledge|seven[- ]question|(?:shared[- ]?)?meetings?|fathom)\b",
                             "A14 setup diagnostic must not request excluded or deferred intake")
 
     def refusal(self, result: subprocess.CompletedProcess[str], message: str, before: dict) -> None:
@@ -257,10 +257,11 @@ class SetupTest(unittest.TestCase):
             self.assertEqual(local["repositories"][key]["status"], "working")
             self.assertEqual(local["repositories"][key]["stdout"], str(repo))
         self.assertEqual(found["capabilities"], {
-            "knowledge_integration": "deferred until after A14; not an A14 blocker",
-            "fathom": "optional; NOT VERIFIED", "clickup": "blocked: read-only integration not implemented",
-            "context_retrieval": "blocked: not implemented", "live_factory": "unsupported: not implemented",
-            "provider_fallback": "unsupported: not implemented", "full_task_start": "blocked: not implemented",
+            "knowledge_integration": "not configured; optional",
+            "shared_meeting_notes": "not established; deferred",
+            "fathom": "optional; NOT VERIFIED", "clickup": "standalone read-only reader available; authentication not checked",
+            "context_retrieval": "selected-task preparation available locally; no task assessment observed by setup", "live_factory": "unsupported: not implemented",
+            "provider_fallback": "unsupported: not implemented", "full_task_start": "blocked: OpenSpec drafting and live factory launch are unsupported",
         })
         self.assertEqual(found["workflow"], "blocked; registration is not overall workflow readiness or launch permission")
         self.assertEqual(found["verification"], {

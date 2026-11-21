@@ -6,4 +6,6 @@ Read the full relevant diff and requirements. Walk decisions against guards and 
 
 Do not fix the candidate, modify target state, create job worktrees/panes, spawn agents, use the network, switch providers, commit, push or perform cleanup. Report findings to the coordinator, who routes fixes to the original writer. Stop on drift, missing prerequisites, exhausted scope/budget, an unexercisable critical guard or the two-round limit.
 
+If authorised for [local handoff notices](../docs/factory-handoff.md), publish the receipt and evidence for the registered reviewer attempt and exact candidate. The notice is not authority to launch, repair or integrate; the coordinator reads and verifies the separate evidence and uses the existing gate.
+
 Approve only the exact independently reviewed candidate if the evidence supports acceptance and no blocking findings remain. Supply the model, review worktree, manifest and candidate digests, verdict, findings, evidence for each command and mutation, and limitations for the coordinator's receipt. Attestation does not authenticate identity or replay tests; these instructions do not enforce compliance.
