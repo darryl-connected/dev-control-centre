@@ -52,6 +52,11 @@ def verify_plan(plan_path: Path) -> dict:
     if any(loop.identity_override(arg) for arg in plan.get("tools", {}).get("pi_args", [])):
         raise loop.RunError("invalid-route", "pi arguments cannot override the approved role provider, model or reasoning identity")
     loop.validate_routes(plan["routes"])
+    tools = plan.get("tools")
+    if not isinstance(tools, dict):
+        raise loop.RunError("stale-plan", "plan tools are malformed")
+    for name in ("herdr", "pi"):
+        loop.approved_executable(tools.get(name), "missing-tool")
     manifest = loop.load_manifest(plan["manifest"])
     if contract.manifest_digest(manifest) != plan["manifest_digest"]:
         raise loop.RunError("stale-plan", "manifest changed since preview")

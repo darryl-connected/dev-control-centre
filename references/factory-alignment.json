@@ -25,7 +25,7 @@
     {
       "path": "factory/COORDINATOR.md",
       "section": null,
-      "sha256": "f69882026ccabd9c3e390036436e0d71b9233d1851f19301175159fde0be45a2"
+      "sha256": "50dda978370d873dce7abc4b194a31f02d36a644de7c0ca7a56de3eae08f4311"
     },
     {
       "path": "factory/WORKER.md",
@@ -85,7 +85,7 @@
     {
       "path": "tests/test_instruction_packaging.py",
       "section": null,
-      "sha256": "905a911ce070a42e6a719506280ec4aa784d07b434222466b847768514d53a43"
+      "sha256": "64ca681df0eb1962bc411a5c1c3519a4b472ceb36a05bf08ea03248811c17703"
     },
     {
       "path": "tests/test_e2e_factory.py",

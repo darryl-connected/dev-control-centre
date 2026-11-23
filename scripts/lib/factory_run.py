@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -132,6 +133,18 @@ def canonical(path: str, code: str) -> Path:
     return value
 
 
+def approved_executable(path: Any, code: str) -> Path:
+    """Return the exact approved executable path or fail; never look one up in PATH."""
+    value = canonical(path, code)
+    try:
+        item = value.stat()
+    except OSError as exc:
+        raise RunError(code, f"{value} is not an executable file") from exc
+    if not stat.S_ISREG(item.st_mode) or not os.access(value, os.X_OK):
+        raise RunError(code, f"{value} is not an executable file")
+    return value
+
+
 def read_json(path: Path, code: str, limit: int = 2 * 1024 * 1024) -> dict:
     try:
         data = path.read_bytes()
@@ -197,6 +210,30 @@ def herdr(executable: Path, session: str, *args: str, timeout: int = 120) -> dic
     except ValueError as exc:
         raise RunError("herdr-failed", f"herdr returned non-JSON output: {text[:200]}") from exc
     return row if isinstance(row, dict) else {}
+
+
+def wait_for_pi(executable: Path, session: str, pane: str, *, timeout: float = 30.0) -> None:
+    """Wait for Herdr's own Pi detection and settled readiness in the launched pane."""
+    deadline = time.monotonic() + timeout
+    last = "no agent detected"
+    while time.monotonic() < deadline:
+        result = run([str(executable), "--session", session, "agent", "get", pane], timeout=10)
+        if result.returncode == 0:
+            try:
+                row = json.loads(result.stdout)
+            except ValueError:
+                row = {}
+            detected = find_id(row, "agent")
+            status = find_id(row, "agent_status")
+            if detected and detected != "pi":
+                raise RunError("herdr-failed", f"Herdr detected {detected} instead of Pi in pane {pane}")
+            if detected == "pi" and status in ("idle", "done"):
+                return
+            last = f"detected={detected} status={status}"
+        else:
+            last = result.stderr.strip()[:200] or "agent not detected"
+        time.sleep(0.1)
+    raise RunError("herdr-failed", f"Herdr did not recognise the approved Pi in pane {pane}: {last}")
 
 
 def find_id(row: Any, key: str) -> str | None:
@@ -384,7 +421,8 @@ def preview(
     for path in (writer, reviewer):
         outside_repos(path, manifest)
     private_dir(canonical(plan_out, "unsafe-state").parent, "unsafe-state")
-    for tool in (canonical(herdr_executable, "missing-tool"), canonical(pi_executable, "missing-tool")):
+    for tool in (approved_executable(herdr_executable, "missing-tool"),
+                 approved_executable(pi_executable, "missing-tool")):
         if not tool.is_file() or not os.access(tool, os.X_OK):
             raise RunError("missing-tool", f"{tool} is not an executable file")
     private_dir(canonical(session_dir, "unsafe-state"), "unsafe-state")
@@ -626,6 +664,8 @@ def assignment_prompt(state: dict, role: str, attempt: str, *, findings: str = "
 
 def start_role(state: dict, role: str, attempt: str, prompt: str, worktree: str, *, findings: str = "", repair: bool = False) -> None:
     tools = state["tools"]
+    herdr_path = approved_executable(tools.get("herdr"), "missing-tool")
+    pi_path = approved_executable(tools.get("pi"), "missing-tool")
     route = state["writer_route"] if role == "writer" else state["routes"][role]
     session_id = f"dcc-{role}-{attempt}-{state['plan_digest'][:8]}"
     argv = ["--model", route_text(route), "--session-dir", tools["session_dir"], "--session-id", session_id,
@@ -642,24 +682,28 @@ def start_role(state: dict, role: str, attempt: str, prompt: str, worktree: str,
     state.setdefault("prompts", {})[f"{role}.{attempt}"] = {"path": str(prompt_path),
                                                            "sha256": digest_file(prompt_path)}
     event(state, "assignment-written", role=role, attempt=attempt, path=str(prompt_path))
+    command = " ".join(shlex.quote(part) for part in [str(pi_path), *argv])
     base = state["herdr"]["writer_pane"] if role == "writer" else state["herdr"]["reviewer_pane"]
-    split = herdr(Path(tools["herdr"]), state["herdr_session"], "pane", "split", "--pane", base,
+    split = herdr(herdr_path, state["herdr_session"], "pane", "split", "--pane", base,
                   "--direction", "down", "--cwd", worktree,
                   "--env", f"PI_CODING_AGENT_DIR={tools['agent_dir']}", "--no-focus")
     pane = find_id(split, "pane_id")
     if not pane or pane == base:
         raise RunError("herdr-failed", "could not create a dedicated role pane")
     state.setdefault("panes", []).append({"role": role, "attempt": attempt, "pane": pane})
-    started = herdr(Path(tools["herdr"]), state["herdr_session"], "agent", "start",
-                    f"{role}-{attempt}", "--kind", "pi", "--pane", pane, "--", *argv, timeout=120)
-    state.setdefault("sessions", {})[session_id] = {"role": role, "attempt": attempt,
-                                                    "worktree": worktree, "model": route_text(route),
-                                                    "thinking": route.get("reasoning"), "argv": argv}
-    event(state, "agent-started", role=role, attempt=attempt, session=session_id, detail=find_id(started, "pane_id"))
-    submitted = herdr(Path(tools["herdr"]), state["herdr_session"], "agent", "prompt", pane, prompt, timeout=60)
+    herdr(herdr_path, state["herdr_session"], "pane", "run", pane, command, timeout=120)
+    wait_for_pi(herdr_path, state["herdr_session"], pane)
+    renamed = herdr(herdr_path, state["herdr_session"], "agent", "rename", pane, f"{role}-{attempt}", timeout=30)
+    state.setdefault("sessions", {})[session_id] = {
+        "role": role, "attempt": attempt, "worktree": worktree, "model": route_text(route),
+        "thinking": route.get("reasoning"), "argv": argv, "executable": str(pi_path),
+        "launch": {"mechanism": "pane-run", "command": command}}
+    event(state, "agent-started", role=role, attempt=attempt, session=session_id,
+          detail=find_id(renamed, "pane_id"), executable=str(pi_path), mechanism="pane-run")
+    submitted = herdr(herdr_path, state["herdr_session"], "agent", "prompt", pane, prompt, timeout=60)
     settled: str | None = None
     try:
-        waited = herdr(Path(tools["herdr"]), state["herdr_session"], "agent", "wait", pane,
+        waited = herdr(herdr_path, state["herdr_session"], "agent", "wait", pane,
                        "--timeout", "15000", timeout=30)
         settled = find_id(waited, "status")
     except RunError:

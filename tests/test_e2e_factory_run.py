@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import signal
 import stat
 import subprocess
@@ -74,6 +75,7 @@ class LoopFixture:
         self.test = test
         self.staged = staged
         self.root = evidence_dir("factory-run-")
+        self.decoy_count = self.root / "decoy-executions.jsonl"
         self.xdg = Path(tempfile.mkdtemp(prefix="dccr-", dir="/tmp"))
         self.inbox = self.root / "inbox"
         self.repo = self.root / "repo"
@@ -83,16 +85,20 @@ class LoopFixture:
         self.sessions = self.root / "sessions"
         self.workspace = self.root / "workspace"
         self.state_dir = self.root / "state"
+        self.extension = KIT / "tests/fixtures/factory-run-provider.ts"
         for path in (self.inbox, self.repo, self.home, self.agent, self.agent_env, self.sessions,
                      self.workspace, self.state_dir):
             path.mkdir(mode=0o700)
         (self.xdg / "herdr").mkdir(parents=True)
-        rewrite(self.xdg / "herdr" / "config.toml",
-                b"onboarding = false\n[update]\nversion_check = false\nmanifest_check = false\n")
-        for name, value in (("settings.json", {"retry": {"enabled": False, "provider": {"maxRetries": 0}},
-                                               "compaction": {"enabled": False}, "cacheWarming": "off",
-                                               "lastChangelogVersion": "1.4.0"}),
-                            ("auth.json", {}), ("trust.json", {})):
+        self.pi_settings = {"retry": {"enabled": False, "provider": {"maxRetries": 0}},
+                            "compaction": {"enabled": False}, "cacheWarming": "off",
+                            "lastChangelogVersion": "1.4.0"}
+        self.pi_auth: dict[str, object] = {}
+        self.pi_trust: dict[str, object] = {}
+        self.herdr_config = b"onboarding = false\n[update]\nversion_check = false\nmanifest_check = false\n"
+        rewrite(self.xdg / "herdr" / "config.toml", self.herdr_config)
+        for name, value in (("settings.json", self.pi_settings), ("auth.json", self.pi_auth),
+                            ("trust.json", self.pi_trust)):
             put(self.agent / name, value)
             put(self.agent_env / name, value)
         self.env = {key: os.environ[key] for key in ("PATH", "LANG") if key in os.environ}
@@ -198,12 +204,14 @@ class LoopFixture:
         self.cli("scripts/factory-inbox.py", "register", "job", self.inbox, "--manifest", self.manifest_file,
                  "--session", self.session_file, "--expires-ms", self.expires, "--approve", check=True)
 
-    def preview(self, *extra: object, check: bool = True, manual: bool = False):
+    def preview(self, *extra: object, check: bool = True, manual: bool = False,
+                pi: str | Path | None = None):
         args = ["preview", self.manifest_file, "--registration", self.registration,
                 "--writer-worktree", self.writer, "--reviewer-worktree", self.reviewer,
-                "--plan-out", self.plan, "--brief", self.brief, "--herdr", HERDR_EXE, "--pi", PI_EXE,
+                "--plan-out", self.plan, "--brief", self.brief, "--herdr", HERDR_EXE, "--pi",
+                str(pi or PI_EXE),
                 "--session-dir", self.sessions, "--agent-dir", self.agent,
-                "--extension", KIT / "tests/fixtures/factory-run-provider.ts",
+                "--extension", self.extension,
                 "--pi-arg=--no-tools", "--pi-arg=--no-context-files", *extra]
         if manual:
             args.append("--manual-fixture")
@@ -232,6 +240,109 @@ class LoopFixture:
 
     def dispatch_count(self, role: str) -> int:
         return sum(1 for row in self.requests() if row.get("role") == role)
+
+    def install_path_decoy(self) -> Path:
+        """Put an executable named pi earlier in PATH for every Herdr child process."""
+        directory = self.root / "decoy-bin"
+        directory.mkdir(mode=0o700)
+        script = directory / "pi"
+        script.write_text(
+            "#!/bin/sh\n"
+            f"printf '%s\\n' \"$*\" >> {shlex.quote(str(self.decoy_count))}\n"
+            f"exec {shlex.quote(PI_EXE)} \"$@\"\n")
+        script.chmod(0o755)
+        self.env["PATH"] = f"{directory}:{self.env.get('PATH', '')}"
+        return script
+
+    def decoy_executions(self) -> list[str]:
+        if not self.decoy_count.exists():
+            return []
+        return [row for row in self.decoy_count.read_text().splitlines() if row]
+
+    def session_row(self, role: str, attempt: str) -> dict:
+        return next(row for row in self.state_row()["sessions"].values()
+                    if row["role"] == role and row["attempt"] == attempt)
+
+    def role_pane(self, role: str, attempt: str) -> str:
+        return next(row["pane"] for row in self.state_row()["panes"]
+                    if row["role"] == role and row["attempt"] == attempt)
+
+    def role_argv(self, role: str, attempt: str) -> list[str]:
+        info = self.herdr("pane", "process-info", "--pane", self.role_pane(role, attempt))
+        processes = info["process_info"]["foreground_processes"]
+        self.test.assertTrue(processes, "role pane has no foreground process")
+        return processes[0]["argv"]
+
+    CONFIG_NAMES = ("settings.json", "trust.json")
+    RUNTIME_NAMES = ("auth.json", "models-store.json")
+
+    def _entry(self, path: Path) -> tuple[int, str]:
+        try:
+            item = path.lstat()
+        except FileNotFoundError:
+            return (0, "missing")
+        mode = stat.S_IMODE(item.st_mode)
+        if stat.S_ISDIR(item.st_mode) and not path.is_symlink():
+            return (mode, "dir")
+        if stat.S_ISREG(item.st_mode) and not path.is_symlink():
+            return (mode, sha_bytes(path.read_bytes()))
+        return (mode, "other")
+
+    def configuration_map(self) -> dict[str, tuple[int, str]]:
+        """Declared fixture Pi configuration/resources plus the isolated Herdr config.toml."""
+        entries: dict[str, tuple[int, str]] = {}
+        for root in (self.agent, self.agent_env):
+            entries[str(root)] = self._entry(root)
+            for name in self.CONFIG_NAMES:
+                entries[str(root / name)] = self._entry(root / name)
+        config = self.xdg / "herdr" / "config.toml"
+        entries[str(config)] = self._entry(config)
+        entries[str(self.extension)] = self._entry(self.extension)
+        return entries
+
+    def expected_configuration_map(self, extension_entry: tuple[int, str]) -> dict[str, tuple[int, str]]:
+        """Expected map for declared fixture configuration and the supplied extension resource.
+
+        extension_entry is the reviewed/pre-dispatch snapshot. It is deliberately not
+        re-read after dispatch, so the expectation is independent of the tested files.
+        """
+        entries: dict[str, tuple[int, str]] = {}
+        settings = sha_bytes(packed(self.pi_settings))
+        trust = sha_bytes(packed(self.pi_trust))
+        for root in (self.agent, self.agent_env):
+            entries[str(root)] = (0o700, "dir")
+            entries[str(root / "settings.json")] = (0o600, settings)
+            entries[str(root / "trust.json")] = (0o600, trust)
+        entries[str(self.xdg / "herdr" / "config.toml")] = (0o644, sha_bytes(self.herdr_config))
+        entries[str(self.extension)] = extension_entry
+        return entries
+
+    def resource_entry(self, path: Path) -> tuple[int, str]:
+        """Mode/type/content entry for a declared fixture resource or configuration file."""
+        return self._entry(path)
+
+    def runtime_state_map(self) -> dict[str, tuple[int, str]]:
+        """Runtime state observed separately from declared configuration bytes.
+
+        auth.json is the runtime authentication store; models-store.json is Pi's
+        runtime model cache. Neither is asserted unchanged or attributed a cause.
+        """
+        entries: dict[str, tuple[int, str]] = {}
+        for root in (self.agent, self.agent_env):
+            for name in self.RUNTIME_NAMES:
+                path = root / name
+                entries[str(path)] = self._entry(path)
+        return entries
+
+    def unexpected_agent_entries(self) -> list[str]:
+        """Any agent-directory entry not declared as configuration or runtime state."""
+        declared = set(self.CONFIG_NAMES) | set(self.RUNTIME_NAMES)
+        extra: list[str] = []
+        for root in (self.agent, self.agent_env):
+            for item in root.rglob("*"):
+                if item.relative_to(root).parts[0] not in declared:
+                    extra.append(str(item))
+        return extra
 
     def transcript_rows(self, path: Path | None = None) -> list[dict]:
         target = path or self.session_file
@@ -306,7 +417,7 @@ class FactoryRunE2E(unittest.TestCase):
         self.addCleanup(fixture.close)
         return fixture
 
-    def test_preview_decline_unverified_duplicate_and_unapproved_launch(self):
+    def test_preview_and_launch_reject_invalid_listener_state(self):
         r = self.fixture()
         r.register()
         r.append_state(False)
@@ -321,8 +432,6 @@ class FactoryRunE2E(unittest.TestCase):
                          ("deepseek-flash", "gpt-6.1-sol"))
         self.assertFalse(r.writer.exists() or r.reviewer.exists())
         self.assertEqual(r.protected(), before)
-        self.assertEqual(r.loop("launch", r.plan, "--state", r.state).returncode, 1)
-        self.assertFalse(r.writer.exists())
         r.disable_listener()
         refused = r.loop("launch", r.plan, "--state", r.state, "--approve")
         self.assertEqual(refused.returncode, 1)
@@ -336,6 +445,7 @@ class FactoryRunE2E(unittest.TestCase):
 
     def test_approved_launch_complete_assignment_review_repair_and_handoff(self):
         r = self.fixture()
+        r.install_path_decoy()
         r.register()
         self.assertEqual(r.preview("--alternate-writer", "openai/gpt-6.2-sol").returncode, 0)
         r.start_herdr()
@@ -343,6 +453,8 @@ class FactoryRunE2E(unittest.TestCase):
         self.assertEqual(json.loads(launched.stdout)["status"], "writer-dispatched")
         self.assertEqual(git(r.writer, "rev-parse", "HEAD").strip(), r.manifest["base"]["commit"])
         wait_for(lambda: r.dispatch_count("writer") == 1, "writer role request missing")
+        self.assertEqual(r.role_argv("writer", "a1")[0], PI_EXE, "writer used a PATH lookup instead of the approved Pi")
+        self.assertEqual(r.role_argv("writer", "a1")[1:], r.session_row("writer", "a1")["argv"])
         self.assertEqual([(row["role"], row["provider"], row["model"]) for row in r.requests()],
                          [("writer", "deepseek", "deepseek-flash")])
         self.assertEqual(r.requests()[0]["agent_dir"], str(r.agent))
@@ -358,6 +470,8 @@ class FactoryRunE2E(unittest.TestCase):
         candidate = json.loads((r.inbox / "candidate.json").read_text())
         self.assertNotEqual(Path(candidate["candidate"]), r.writer)
         wait_for(lambda: r.dispatch_count("reviewer") == 1, "reviewer role request missing")
+        self.assertEqual(r.role_argv("reviewer", "a1")[0], PI_EXE, "reviewer used a PATH lookup")
+        self.assertEqual(r.role_argv("reviewer", "a1")[1:], r.session_row("reviewer", "a1")["argv"])
         self.assertEqual([(row["role"], row["model"]) for row in r.requests()],
                          [("writer", "deepseek-flash"), ("reviewer", "gpt-6.1-sol")])
         self.assertEqual(r.requests()[-1]["agent_dir"], str(r.agent))
@@ -382,10 +496,15 @@ class FactoryRunE2E(unittest.TestCase):
         self.assertEqual((repaired["status"], repaired["attempt"]), ("repair-dispatched", "a2"))
         self.assertIn("fixture finding needs repair", r.prompt("writer", "a2"))
         wait_for(lambda: r.dispatch_count("writer") == 2, "repair writer request missing")
+        self.assertEqual(r.role_argv("writer", "a2")[0], PI_EXE, "repair used a PATH lookup")
+        self.assertEqual(r.role_argv("writer", "a2")[1:], r.session_row("writer", "a2")["argv"])
         self.assertEqual(r.target_status(), before, "changes_requested applied target bytes")
         rewrite(r.writer / "new.txt", b"reviewed candidate\nrepaired\n")
         r.publish("writer", "a2", "reported")
         self.assertEqual(json.loads(r.loop("advance", r.state, check=True).stdout)["status"], "review-dispatched")
+        wait_for(lambda: r.dispatch_count("reviewer") == 2, "re-review request missing")
+        self.assertEqual(r.role_argv("reviewer", "a2")[0], PI_EXE, "re-review used a PATH lookup")
+        self.assertEqual(r.role_argv("reviewer", "a2")[1:], r.session_row("reviewer", "a2")["argv"])
         r.publish("reviewer", "a2", "approved")
         ready = json.loads(r.loop("advance", r.state, check=True).stdout)
         self.assertEqual((ready["status"], ready["launched"]), ("ready-to-handoff", False))
@@ -396,6 +515,142 @@ class FactoryRunE2E(unittest.TestCase):
         self.assertEqual(git(r.repo, "rev-parse", "HEAD").strip(), r.manifest["base"]["commit"])
         self.assertEqual((r.repo / "new.txt").read_bytes(), b"reviewed candidate\nrepaired\n")
         self.assertEqual(r.target_status(), ["A  new.txt"])
+        self.assertEqual(r.decoy_executions(), [], "a role resolved pi from PATH instead of the approved executable")
+
+    def test_path_decoy_is_never_executed_and_approved_executable_is_bound(self):
+        r = self.fixture()
+        r.install_path_decoy()
+        r.register()
+        self.assertEqual(r.preview().returncode, 0)
+        r.start_herdr()
+        launched = r.loop("launch", r.plan, "--state", r.state, "--approve", check=True)
+        self.assertEqual(json.loads(launched.stdout)["status"], "writer-dispatched")
+        wait_for(lambda: r.dispatch_count("writer") == 1, "writer role request missing")
+        self.assertEqual(r.decoy_executions(), [], "the earlier PATH pi decoy was executed")
+        argv = r.role_argv("writer", "a1")
+        self.assertEqual(argv[0], PI_EXE)
+        self.assertEqual(argv[1:], r.session_row("writer", "a1")["argv"])
+        self.assertEqual(r.requests()[0]["agent_dir"], str(r.agent))
+
+    def test_unsafe_literal_approved_executable_path_is_preserved(self):
+        r = self.fixture()
+        directory = r.root / "approved dir; touch dcc-sentinel ;#"
+        directory.mkdir(mode=0o700)
+        approved = directory / "pi"
+        approved.symlink_to(PI_EXE)
+        r.register()
+        self.assertEqual(r.preview(pi=approved).returncode, 0)
+        self.assertEqual(json.loads(r.plan.read_text())["tools"]["pi"], str(approved))
+        r.start_herdr()
+        launched = r.loop("launch", r.plan, "--state", r.state, "--approve")
+        self.assertFalse((r.writer / "dcc-sentinel").exists(),
+                         "the pane shell executed text from the executable path")
+        self.assertEqual(launched.returncode, 0, launched.stderr)
+        wait_for(lambda: r.dispatch_count("writer") == 1, "writer role request missing")
+        argv = r.role_argv("writer", "a1")
+        self.assertEqual(argv[0], str(approved), "the approved executable path was not used literally")
+        self.assertEqual(argv[1:], r.session_row("writer", "a1")["argv"])
+        self.assertFalse((r.writer / "dcc-sentinel").exists(),
+                         "the pane shell executed text from the executable path")
+
+    def test_missing_or_non_executable_approved_pi_fails_before_any_role_request(self):
+        with self.subTest(case="removed-before-launch"):
+            r = self.fixture()
+            r.install_path_decoy()
+            approved = r.root / "approved-pi"
+            approved.symlink_to(PI_EXE)
+            r.register()
+            self.assertEqual(r.preview(pi=approved).returncode, 0)
+            approved.unlink()
+            r.start_herdr()
+            refused = r.loop("launch", r.plan, "--state", r.state, "--approve")
+            self.assertEqual(refused.returncode, 1)
+            self.assertIn("missing-tool", refused.stderr)
+            self.assertFalse(r.writer.exists())
+            self.assertFalse(r.state.exists())
+            self.assertEqual(r.decoy_executions(), [])
+            self.assertFalse((r.root / "provider.jsonl").exists())
+        with self.subTest(case="non-executable-before-launch"):
+            r = self.fixture()
+            r.install_path_decoy()
+            approved = r.root / "approved-pi"
+            approved.write_text("#!/bin/sh\nexec " + shlex.quote(PI_EXE) + " \"$@\"\n")
+            approved.chmod(0o755)
+            r.register()
+            self.assertEqual(r.preview(pi=approved).returncode, 0)
+            approved.chmod(0o644)
+            r.start_herdr()
+            refused = r.loop("launch", r.plan, "--state", r.state, "--approve")
+            self.assertEqual(refused.returncode, 1)
+            self.assertIn("missing-tool", refused.stderr)
+            self.assertFalse(r.writer.exists())
+            self.assertFalse(r.state.exists())
+            self.assertEqual(r.decoy_executions(), [])
+            self.assertFalse((r.root / "provider.jsonl").exists())
+        with self.subTest(case="removed-before-review-dispatch"):
+            r = self.fixture()
+            r.install_path_decoy()
+            approved = r.root / "approved-pi"
+            approved.symlink_to(PI_EXE)
+            r.register()
+            self.assertEqual(r.preview(pi=approved).returncode, 0)
+            r.start_herdr()
+            r.loop("launch", r.plan, "--state", r.state, "--approve", check=True)
+            wait_for(lambda: r.dispatch_count("writer") == 1, "writer role request missing")
+            put(r.writer / "new.txt", b"candidate\n")
+            r.publish("writer", "a1", "reported")
+            approved.unlink()
+            refused = r.loop("advance", r.state)
+            self.assertEqual(refused.returncode, 1)
+            self.assertIn("missing-tool", refused.stderr)
+            self.assertEqual(r.dispatch_count("reviewer"), 0)
+            self.assertEqual(r.decoy_executions(), [])
+
+    def test_dispatch_leaves_the_isolated_profile_config_unchanged(self):
+        """P6 fixture guard: declared configuration/resources survive both real role dispatches.
+
+        Protected configuration/resources: the two declared Pi agent directories and
+        their settings.json/trust.json files, the explicitly supplied Pi extension
+        resource, and the isolated Herdr config.toml. Runtime state tracked separately:
+        Pi auth.json and models-store.json. Pi session files and Herdr session/lock
+        state remain runtime state outside the configuration claim. Outside this claim:
+        the live host profile, global Herdr configuration and any non-fixture resource.
+        """
+        r = self.fixture()
+        r.register()
+        self.assertEqual(r.preview().returncode, 0)
+        plan = json.loads(r.plan.read_text())
+        extension = Path(plan["tools"]["extension"])
+        self.assertEqual(extension, r.extension, "launch plan does not use the declared fixture extension")
+        extension_entry = r.resource_entry(extension)
+        self.assertNotIn(extension_entry[1], ("missing", "dir", "other"),
+                         "declared fixture extension is not a regular file before dispatch")
+        expected = r.expected_configuration_map(extension_entry)
+        config_before = r.configuration_map()
+        runtime_before = r.runtime_state_map()
+        self.assertIn(str(r.agent / "settings.json"), expected)
+        self.assertIn(str(extension), expected)
+        self.assertNotIn(str(r.agent / "auth.json"), expected)
+        self.assertIn(str(r.agent / "auth.json"), runtime_before)
+        self.assertEqual(config_before, expected, "fixture configuration does not match its declared map")
+        self.assertEqual(r.unexpected_agent_entries(), [], "unexpected fixture configuration entry before dispatch")
+        r.start_herdr()
+        r.loop("launch", r.plan, "--state", r.state, "--approve", check=True)
+        wait_for(lambda: r.dispatch_count("writer") == 1, "writer role request missing")
+        put(r.writer / "new.txt", b"candidate\n")
+        r.publish("writer", "a1", "reported")
+        self.assertEqual(json.loads(r.loop("advance", r.state, check=True).stdout)["status"], "review-dispatched")
+        wait_for(lambda: r.dispatch_count("reviewer") == 1, "reviewer role request missing")
+        config_after = r.configuration_map()
+        runtime_after = r.runtime_state_map()
+        self.assertEqual(config_after, expected,
+                         "a declared Pi/Herdr configuration or resource changed during role dispatch")
+        self.assertEqual(r.unexpected_agent_entries(), [], "unexpected fixture configuration entry after dispatch")
+        self.assertEqual(set(runtime_after), set(runtime_before), "declared runtime state paths changed shape")
+        put(r.root / "runtime-state.json",
+            {"protected_configuration": expected, "declared_extension": str(extension),
+             "runtime_before": runtime_before, "runtime_after": runtime_after, "cause": "not asserted"}, 0o600)
+        self.assertEqual(r.target_status(), [])
 
     def test_staged_baseline_is_transferred_before_dispatch(self):
         r = self.fixture(staged=True)
@@ -495,17 +750,6 @@ class FactoryRunE2E(unittest.TestCase):
         self.assertEqual(refused.returncode, 1)
         self.assertIn("stale-state", refused.stderr)
         self.assertEqual(json.loads(old.read_text())["phase"], "dispatched", "old state must not be rewritten")
-
-    def test_third_repair_and_refusal_restart_are_denied(self):
-        sys.path.insert(0, str(KIT / "scripts/lib"))
-        import factory_run as loop
-        state = {"policy": loop.POLICY, "attempts": [{"role": "writer", "attempt": "a1"}] * 1,
-                 "attempt_limits": {"writer.repair": {"calls": 30, "minutes": 15}},
-                 "attempt_allocations": {}, "attempt_usage": {}, "attempt_kinds": {}, "events": [],
-                 "repairs": 2, "blocked": None, "usage": {}}
-        with self.assertRaises(loop.RunError) as caught:
-            loop.dispatch_repair(state, {})
-        self.assertEqual(getattr(caught.exception, "code", None), "repair-limit")
 
     def test_switch_eligibility_refusals_and_approved_alternate(self):
         r = self.fixture()
