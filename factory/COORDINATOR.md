@@ -65,6 +65,8 @@ Default firm declared allowances are **per attempt**: initial writer 60 calls/25
 
 ## Testing contract
 
+Run full acceptance once per required role through `python -B scripts/verify-suite.py` in that role's own shell. It checks the role environment's prerequisites in the same interpreter and environment before discovery, reports every missing or invalid prerequisite together and exits nonzero without importing a test, then runs the packaged suite once and passes the suite status through. `--check` reports prerequisites only and never discovers tests. A prerequisite check is not test behaviour.
+
 - **A1 Requirements first.** Before implementation, name the source requirement, input or user action, independently expected outcome and observation method for each critical criterion. Read source for wiring and diagnosis, not to obtain expected values.
 - **A2 Observable outcomes.** Assert the returned, stored or rendered result. Names, counts, status attributes and source-text matches are not behavioural proof on their own. Keep job integrity checks separate from functional evidence.
 - **A3 Adversarial evidence.** Cover real failure and edge cases. Reproduce each realistic injected defect in a disposable copy, observe the intended assertion fail and show the unmodified candidate passes. An unexercisable check is NOT VERIFIED, not a pass.

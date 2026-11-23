@@ -50,6 +50,7 @@ MEMBERS = (
     "scripts/draft.py",
     "scripts/lib/openspec_draft.py",
     "scripts/validate-brief.py",
+    "scripts/verify-suite.py",
     "scripts/verify-pi-resources.mjs",
     "skills/factory/SKILL.md",
     "skills/grilling/SKILL.md",
@@ -76,6 +77,7 @@ MEMBERS = (
     "tests/test_draft.py",
     "tests/test_e2e_draft.py",
     "tests/test_validate_brief.py",
+    "tests/test_verify_suite.py",
 )
 
 

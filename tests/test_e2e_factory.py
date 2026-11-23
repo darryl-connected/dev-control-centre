@@ -25,6 +25,7 @@ EXPECTED_MEMBERS = {
     "factory/COORDINATOR.md", "factory/WORKER.md", "factory/REVIEWER.md", "templates/pi/APPEND_SYSTEM.md",
     "references/factory-contract.md", "references/factory-alignment.json", "scripts/build.py",
     "scripts/factory-job.py", "scripts/factory-alignment.py", "scripts/lib/factory_contract.py", "scripts/validate-brief.py",
+    "scripts/verify-suite.py", "tests/test_verify_suite.py",
     "tests/test_factory_job.py", "tests/test_factory_alignment.py", "tests/test_validate_brief.py",
     "tests/test_instruction_packaging.py", "tests/test_e2e_factory.py",
     "docs/pi-setup.md", "scripts/setup.py", "scripts/verify-pi-resources.mjs",
@@ -47,7 +48,7 @@ EXPECTED_EXECUTABLES = {
     "scripts/build.py", "scripts/factory-alignment.py", "scripts/factory-inbox.py", "scripts/factory-job.py",
     "scripts/clickup.py", "scripts/knowledge.py", "scripts/prepare.py", "scripts/draft.py", "scripts/setup.py",
     "scripts/factory-run.py",
-    "scripts/validate-brief.py", "tests/test_factory_job.py",
+    "scripts/validate-brief.py", "scripts/verify-suite.py", "tests/test_factory_job.py",
     "tests/test_validate_brief.py",
 }
 
