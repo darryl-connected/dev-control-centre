@@ -2,6 +2,10 @@
 
 ConnectED-first personal workspace for preparing a selected development task and coordinating its implementation through Pi + Herdr.
 
+## Start here (macOS)
+
+Already cloned DCC? [Install Pi, sign in, and paste the starter prompt](docs/pi-setup.md#quickstart-macos) from the DCC checkout. Herdr can wait until you’re ready to use the factory.
+
 ## Status
 
 This repository ships the DCC-001 offline factory foundation, A14 S1–S3 setup and the B4 coordinator-invoked factory loop. Setup prints a read-only plan and can create three workspace-local files after explicit approval and instruction-shadow acknowledgement. The loop previews an approved job, creates the isolated writer worktree/pane only after explicit launch approval, records each fixed attempt before dispatch, runs independent review in a separate worktree, routes one in-scope repair to the original writer and stages only the accepted exact candidate without committing. It does not install Pi or Herdr or distribute API keys, live sessions or global configuration.

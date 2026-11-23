@@ -15,7 +15,7 @@
     {
       "path": "README.md",
       "section": null,
-      "sha256": "d6cfefda2a0e87ae60aa4eacd47b4410431715fb4b35628524534420776c91a3"
+      "sha256": "aee1866786dce7d3539b623a672d0049135dae9e573dbf5388a90317d9378725"
     },
     {
       "path": "docs/scope.md",
@@ -95,7 +95,7 @@
     {
       "path": "templates/pi/APPEND_SYSTEM.md",
       "section": null,
-      "sha256": "26402a5d8bb2c6eba27ec439804c1ce8c56860cf7adadddd0e28b12a35325496"
+      "sha256": "79b8d9ee20ff3a7952fc0eecdefe86f20eee29d9b66e8fd01c3208bd549da531"
     },
     {
       "path": "references/factory-contract.md",

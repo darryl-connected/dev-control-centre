@@ -1,6 +1,43 @@
-# A14 local Pi setup (S1–S3)
+# Set up DCC with Pi
 
 This slice configures a personal workspace and registers the kit's three skills. It does not configure accounts, authenticate a provider or complete the prepared macOS exercise. The separately invoked factory loop ships in this repository; setup does not run it. Put the kit, workspace and Git targets in separate directories. Keep the extracted kit in place: Pi resolves absolute skill paths into it, and the skills resolve their bundled links from there. Moving the kit requires a new plan for a fresh workspace or a separate, manually managed migration of existing settings. The tool does not merge or migrate settings.
+
+## Quickstart (macOS)
+
+### 1. Install Pi and sign in
+
+If you don’t already have Pi, get the latest stable release using the official installer from <https://pi.dev/>. Run this in macOS Terminal:
+
+```sh
+curl -fsSL https://pi.dev/install.sh | sh
+```
+
+Follow the installer’s instructions if you need to reopen Terminal. From the root of your existing DCC Git checkout, run:
+
+```sh
+pi --version
+pi
+```
+
+Inside Pi, type `/login`, choose the provider for your supported subscription, and complete sign-in there. Don’t paste keys or verification codes into the chat. If needed, use `/model` to select a model available through your account.
+
+**Version note:** DCC’s automated checks use Pi 1.4.0. First-run setup with the latest Pi on a fresh Mac is **NOT VERIFIED**. A working Pi login lets you use the starter prompt; it does not verify the factory’s model routes.
+
+### 2. Paste this into Pi in the DCC checkout
+
+```text
+I’m in the DCC checkout. Help me set up DCC using this checkout’s AGENTS.md and docs/pi-setup.md. Don’t assume /skill:setup is available yet.
+
+Check Git and Python 3.10+. Ask only for the path to a separate, existing DCC workspace and the name and path of my local app Git checkout if you can’t determine them. If a directory or prerequisite is missing, tell me what I need to supply; don’t create directories or install software. Run scripts/setup.py inspect as documented, saving its JSON plan outside the workspace and the Git checkouts. Show me the exact files it would create, any blockers, and how the workspace’s APPEND_SYSTEM.md takes precedence over my user copy. Stop until I approve the plan and separately acknowledge that precedence.
+
+After both confirmations, apply that exact plan using the documented flags. Tell me how to open Pi in the new workspace, review its trust prompt, and check that the DCC skills are listed. Don’t edit global Pi settings, change either checkout, ask for secrets, install Herdr, or start a factory job.
+```
+
+### 3. Open Pi in your new workspace
+
+After setup applies the plan, exit Pi in the kit checkout. In Terminal, change to the **separate DCC workspace** and run `pi` again. Review the workspace’s `.pi/` files before granting trust at Pi’s prompt. Once trusted, Pi uses the workspace’s `.pi/APPEND_SYSTEM.md` and registers the DCC skills. Use Pi’s slash-command suggestions to look for `/skill:setup`, `/skill:grilling`, and `/skill:factory`; you don’t need to run them to check discovery.
+
+Herdr isn’t needed for these steps. Install and verify it separately before trying the factory. Skill discovery is not proof that ClickUp, the factory model routes, or an end-to-end factory run work.
 
 ## Prerequisites and limits
 
@@ -44,6 +81,8 @@ The probe runs the real Pi loader with trust granted and denied in memory; it do
 [Factory handoff](factory-handoff.md) is separate from setup registration. It uses an explicit per-process `pi -e` and per-conversation opt-in for a developer-approved job; setup does not install or enable it. The inbox only notifies. Linux offline TUI evidence for that adapter does not complete the prepared Mac exercise.
 
 ## Fresh Mac checklist (manual, NOT VERIFIED)
+
+Before recommending the latest release to developers, rehearse the quickstart verbatim from a Git checkout on a fresh Mac. Record the installed Pi version and verify that the starter prompt stops at the review gate, the approved plan applies, and a fresh trusted workspace session actually loads the DCC instructions and all three skills. This quickstart rehearsal does not need Herdr; keep the pinned checks and full prepared exercise below separate.
 
 1. Record the macOS version and architecture on a fresh developer environment with no personal Pi setup or private vault. Separately approve and supply Python, Git, Pi 1.4.0, the matching SDK and Node for the probe, and the intended Herdr version. Record actual versions, not just package names.
 2. Extract the shipped archive into a new stable location; make a separate disposable workspace and prepared Git target. Save before maps for HOME, the workspace and the target index. Try inspect, unapproved apply and approved apply. Compare bytes/modes and check the three new resources, saved mappings, and unchanged originals. Repeat with synthetic existing user settings and append, a conflicting project file and a saved stale plan.
