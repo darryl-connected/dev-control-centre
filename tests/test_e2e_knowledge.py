@@ -102,8 +102,10 @@ class KnowledgeDistributionTest(unittest.TestCase):
                 'fathom': 'optional; NOT VERIFIED',
                 'clickup': 'standalone read-only reader available; authentication not checked',
                 'context_retrieval': 'selected-task preparation available locally; no task assessment observed by setup',
-                'live_factory': 'unsupported: not implemented', 'provider_fallback': 'unsupported: not implemented',
-                'full_task_start': 'blocked: OpenSpec drafting and live factory launch are unsupported',
+                'live_factory': 'coordinator-invoked loop available locally; live provider and account operation NOT VERIFIED',
+                'provider_fallback': 'writer-only switch requires explicit approval; role isolation and accounts NOT VERIFIED',
+                'openspec_drafting': 'local draft and strict validation helper available; tool and target workflow not checked by setup',
+                'full_task_start': 'blocked: explicit developer launch approval required',
             })
             self.assertEqual(actual['workflow'], 'blocked; registration is not overall workflow readiness or launch permission')
             self.assertEqual(actual['workspace_configuration'], 'configured')

@@ -913,9 +913,11 @@ def render_brief(manifest: dict) -> str:
     writer_budget = budgets.get("writer", {})
     reviewer_budget = budgets.get("reviewer", {})
     lines.append(
-        f"Budget: writer {writer_budget.get('minutes', '')} minutes and {writer_budget.get('calls', '')} tool calls; "
-        f"reviewer {reviewer_budget.get('minutes', '')} minutes and {reviewer_budget.get('calls', '')} tool calls. "
-        "Up to two repair rounds inside those totals."
+        f"Budget: per-attempt declared allowances, initial writer up to {writer_budget.get('calls', '')} calls or "
+        f"{writer_budget.get('minutes', '')} active minutes; initial reviewer up to {reviewer_budget.get('calls', '')} "
+        f"calls or {reviewer_budget.get('minutes', '')} active minutes; eligible repair writer 30/15; "
+        "independent re-review 40/20. Cumulative role/coordinator/job use is reported and is not a mandatory "
+        "aggregate cap unless an overall ceiling is explicitly selected at plan approval. Up to two repair rounds."
     )
     lines.append(f"Stopping point: {manifest.get('stopping_point', '')}")
     lines.append("")

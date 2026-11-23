@@ -197,3 +197,23 @@ Passing this exercise does not establish reliability across the production monor
 - S10: [[decisions/log#2026-11-18 - Developer control centre narrowed to Pi and Herdr]]: later amendment approved by Darryl in this session. Pi + Herdr only for now; use the known DeepSeek setup with a separate team API key.
 - S11: Darryl's later 18 Nov clarification: Samson will not be on developers' computers; the factory process must ship in the repo, with Pi setup and operating instructions stripped of Samson's voice. Samson proposed D27-D28 and fresh-environment acceptance; Darryl replied "yes my boy".
 - S12: [[decisions/log#2026-11-18 - Ship the factory and neutral Pi setup with the developer kit]]: decision record for D27-D28. The private operating manual was inspected as an adaptation source, not copied into the kit.
+
+## B4 build amendment (O18 model policy)
+
+This later approved build correction supersedes the fallback-only wording above for developer-kit defaults.
+
+- `deepseek/deepseek-flash` is the default implementation writer from the first attempt, using the model's supported reasoning default.
+- `openai/gpt-6.1-sol` with high reasoning coordinates the job and performs independent acceptance review in separate sessions and worktrees.
+- The coordinator and reviewer routes are fixed. A later switch is writer-only, preserves progress, uses a fresh attempt and requires explicit approval of a route named in the approved plan; it never changes the coordinator/reviewer route or declared budgets.
+- Missing or mismatched routes block. Provider safety refusals and exhausted coordinator/reviewer allowance stop without rerouting or retrying. No global settings or credentials are copied.
+- The shipped loop implements dispatch, record-driven review/repair and exact staged-only handoff; live provider/account operation remains NOT VERIFIED until an approved rehearsal is observed.
+
+## B4 attempt-budget policy amendment
+
+This later approved policy correction supersedes mandatory shared/coordinator job caps in the B4 runtime guidance.
+
+- Declared allowances are per attempt: initial writer and initial reviewer up to 60 calls/25 active minutes each; eligible repair writer 30/15; independent re-review 40/20.
+- Same-attempt resume retains its allocation and spending; a new eligible attempt receives only its own bounded allowance. Cumulative role, coordinator and job use is recorded and reported, not imposed as a mandatory aggregate cap.
+- An overall ceiling is opt-in and explicit at plan approval. When selected, initial shared use is derived from role/coordinator deltas or must be consistent with them; inconsistent aggregates are rejected and exhausted capacity refuses before role side effects.
+- Attempt or selected-overall exhaustion pauses with resumable state. No automatic restart, counter reset, safety-refusal retry, provider switch or third repair.
+- These are declared local accounting rules, not authenticated provider quotas, process watchdogs or a general isolation claim.

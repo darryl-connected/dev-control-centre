@@ -18,7 +18,7 @@ from test_factory_job import BASE_CONTENTS, Fixture, clean_env, digest, json_dig
 
 PACKAGE = Path(__file__).resolve().parent.parent
 ARCHIVE = "dev-control-centre.tar.gz"
-SCOPE_SHA256 = "e76d9d5a4234710274d929cf12083a106d3755c8102ef08cc1e9dc1a6972711c"
+SCOPE_SHA256 = "deaf692dd0d407c1f7606698224fc48d80cedfde48acc0c4e6d3dceee2ce89d8"
 # Distribution expectation fixed here, not imported from the builder.
 EXPECTED_MEMBERS = {
     "AGENTS.md", "LICENSE", "README.md", "docs/scope.md", "requirements-dev.txt",
@@ -39,10 +39,15 @@ EXPECTED_MEMBERS = {
     "tests/test_clickup.py", "tests/test_e2e_clickup.py",
     "docs/task-preparation.md", "scripts/prepare.py", "scripts/lib/task_preparation.py",
     "tests/test_prepare.py", "tests/test_e2e_prepare.py",
+    "scripts/draft.py", "scripts/lib/openspec_draft.py", "tests/test_draft.py", "tests/test_e2e_draft.py",
+    "scripts/factory-run.py", "scripts/lib/factory_run.py", "tests/fixtures/factory-run-provider.ts",
+    "tests/test_factory_run.py", "tests/test_e2e_factory_run.py",
 }
 EXPECTED_EXECUTABLES = {
     "scripts/build.py", "scripts/factory-alignment.py", "scripts/factory-inbox.py", "scripts/factory-job.py",
-    "scripts/clickup.py", "scripts/knowledge.py", "scripts/prepare.py", "scripts/setup.py", "scripts/validate-brief.py", "tests/test_factory_job.py",
+    "scripts/clickup.py", "scripts/knowledge.py", "scripts/prepare.py", "scripts/draft.py", "scripts/setup.py",
+    "scripts/factory-run.py",
+    "scripts/validate-brief.py", "tests/test_factory_job.py",
     "tests/test_validate_brief.py",
 }
 
@@ -138,7 +143,7 @@ class DistributionTest(unittest.TestCase):
         for line in (
             "TASK OFFLINE-1. Demonstrate a relocated gate", f"Base commit: {commit}",
             "C1 (from D1): fixture result is accepted", "Allowed paths: src/example.py.",
-            "Budget: writer 17 minutes and 23 tool calls", "- production changes", "Do not hand off.",
+            "Budget: per-attempt declared allowances", "initial writer up to 23 calls or 17 active minutes", "initial reviewer up to 90 calls or 45 active minutes", "- production changes", "Do not hand off.",
             "Do not spawn sub-agents.", "Do not create worktrees or panes.", "Do not commit.",
             "Do not push.", "Do not use the network.", "Leave your change uncommitted.",
         ):

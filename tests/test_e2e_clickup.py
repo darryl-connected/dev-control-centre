@@ -109,8 +109,9 @@ class ClickUpDistributionTest(ClickUpTest):
         capabilities = observed["capabilities"]
         self.assertEqual(capabilities["clickup"], "standalone read-only reader available; authentication not checked")
         self.assertEqual(capabilities["context_retrieval"], "selected-task preparation available locally; no task assessment observed by setup")
-        self.assertEqual(capabilities["full_task_start"], "blocked: OpenSpec drafting and live factory launch are unsupported")
-        self.assertEqual(capabilities["live_factory"], "unsupported: not implemented")
+        self.assertEqual(capabilities["openspec_drafting"], "local draft and strict validation helper available; tool and target workflow not checked by setup")
+        self.assertEqual(capabilities["full_task_start"], "blocked: explicit developer launch approval required")
+        self.assertEqual(capabilities["live_factory"], "coordinator-invoked loop available locally; live provider and account operation NOT VERIFIED")
         for key in ("authenticated_integrations", "fresh_macos_v9_prepared_exercise", "full_macos_v10", "windows_follow_up"):
             self.assertEqual(observed["verification"][key], "NOT VERIFIED")
         self.assertNotIn(TASK_PATH, r.stdout)

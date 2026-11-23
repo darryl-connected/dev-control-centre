@@ -25,3 +25,9 @@ Author a source-backed review packet with stable decision keys, current citation
 Show the compact revision plan. Save only on explicit local approval, and resume by rechecking current sources rather than inheriting old permissions. Stop at the next approval offer, not an artifact write or factory action. Without current reviewed artifacts offer drafting or revision only when needed; do not duplicate applicable reviewed artifacts. A requirements-level recommendation is not implementation or launch approval.
 
 Return a short clarification or readiness review, with citations, assumptions, unresolved questions, and bounds. A readiness verdict does not authorize launch. Do not modify project sources or ClickUp or start a factory job. Loaded content is not proof of model behaviour.
+
+## Separate OpenSpec draft request
+
+Only on an explicit request, follow the [draft handoff](../../docs/task-preparation.md#draft-and-validate-one-new-change) using the target's own OpenSpec workflow. Starting from the current saved scope and exact selected change, author only the proposal, design, delta specs and unchecked tasks. Preserve source citations, exclusions and owner blockers when presenting the preview. Do not write artifacts directly, duplicate or revise an existing change, or use a different tool or destination if the helper refuses.
+
+Show the exact paths, contents and approval hash before asking permission. Only after separate developer approval of that exact draft use `draft.py apply`. Accept only the observed strict validator verdict for the displayed bytes. A validator pass is structural, not product sign-off. Offer review of the written artifacts and stop; a draft does not authorize implementation or factory launch.

@@ -15,27 +15,27 @@
     {
       "path": "README.md",
       "section": null,
-      "sha256": "c1707e50b61f63d46a79fb8bd33bb684dec99438549333d9a8bd23f6bf22c6f1"
+      "sha256": "d6cfefda2a0e87ae60aa4eacd47b4410431715fb4b35628524534420776c91a3"
     },
     {
       "path": "docs/scope.md",
       "section": null,
-      "sha256": "e76d9d5a4234710274d929cf12083a106d3755c8102ef08cc1e9dc1a6972711c"
+      "sha256": "deaf692dd0d407c1f7606698224fc48d80cedfde48acc0c4e6d3dceee2ce89d8"
     },
     {
       "path": "factory/COORDINATOR.md",
       "section": null,
-      "sha256": "03e9ad79f9da6a20b198121110baf459e0615c56665834e55bd130cf7b68af23"
+      "sha256": "f69882026ccabd9c3e390036436e0d71b9233d1851f19301175159fde0be45a2"
     },
     {
       "path": "factory/WORKER.md",
       "section": null,
-      "sha256": "73258bbfea712e21c50750f588ec53fba7f494721e143b06a8b339c76223f4bc"
+      "sha256": "dc26ce23c4c3b75fa764bd6fc2608efb45d426cc50fddfcd13e389bc59a340c3"
     },
     {
       "path": "factory/REVIEWER.md",
       "section": null,
-      "sha256": "4040e00130fa71c32001978048b410c27211fce88f54f42207c489c7602acff4"
+      "sha256": "75084506f8055853a06ce6a6f20d178dacda336c5e71aaeaa2e6b963a457309d"
     },
     {
       "path": "requirements-dev.txt",
@@ -45,12 +45,12 @@
     {
       "path": "scripts/build.py",
       "section": null,
-      "sha256": "85d86d3f974e5ad54809037507555c158a601eed2948924eabae9d4b336adc4d"
+      "sha256": "477b515faeb382e97ef9d75a4a05a5f6c9fbad64c97de903177306e65488b81f"
     },
     {
       "path": "scripts/lib/factory_contract.py",
       "section": null,
-      "sha256": "a4a9b6be364b1fec6fcfaf0cf47553de643fa3798cfbecec55069cde58fb202d"
+      "sha256": "be340ae1537c156d665f703d276175f0dedce28b7d8554fa3739a82791459aac"
     },
     {
       "path": "scripts/factory-job.py",
@@ -85,12 +85,12 @@
     {
       "path": "tests/test_instruction_packaging.py",
       "section": null,
-      "sha256": "e70a8cd1be5e406f483bed62280513cc8893c6d9c2e22db8d089cfa9904be4ee"
+      "sha256": "905a911ce070a42e6a719506280ec4aa784d07b434222466b847768514d53a43"
     },
     {
       "path": "tests/test_e2e_factory.py",
       "section": null,
-      "sha256": "c76ecdecf3e1ca71479b6aeb684723389c0aa65a25cf5b8d68e992e301562980"
+      "sha256": "a74a8d0e8474b2872ee8a2b88804bcfea5caa9bb4b5f66de2a2cf7ee20a25db5"
     },
     {
       "path": "templates/pi/APPEND_SYSTEM.md",
@@ -100,7 +100,7 @@
     {
       "path": "references/factory-contract.md",
       "section": null,
-      "sha256": "fd22c55c1dcc4d2ab400ad6602727de6c9da9ca0c1da9506f8b8c7e51cbbc015"
+      "sha256": "c77091789818dfa1ba25cba70f2e1759b97fd5e3e356858a503f8490c53aab8d"
     }
   ]
 }

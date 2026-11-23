@@ -47,7 +47,7 @@ Read the displayed bodies before adding `review` to that packet. It takes:
 
 Every citation is an object `{ "source": "<source id as shown>", "sha256": "<body hash as shown>", "line": 1, "end_line": 2 }` within a displayed range. Cite the actual settled facts and meaningful gaps. Ask the single `active_question` and wait. An owner-only question remains visible but is not asked as a developer decision. When an answer arrives, retain the original decision key, citations, question and the attributable answer in the reassessed packet. Verify actual scope independence yourself; schema checks do not infer semantic truth or authenticate owners, approval or validation claims.
 
-`blocked` offers one question, owner escalation or reinspection as applicable. `ready_for_drafting` stops at an approval offer to draft (or review/revise an already selected change). `ready_for_implementation` is only a requirements-level recommendation grounded in attributed current artifact-body evidence. It does not authenticate or rerun validation, grant authority to act, or start B3/B4.
+`blocked` offers one question, owner escalation or reinspection as applicable. `ready_for_drafting` stops at an approval offer to draft (or review/revise an already selected change). `ready_for_implementation` is only a requirements-level recommendation grounded in attributed current artifact-body evidence. It does not authenticate or rerun validation, grant authority to act, or start drafting or the factory.
 
 ## Approve a private revision and resume
 
@@ -64,3 +64,37 @@ python -B scripts/prepare.py resume --workspace "$WORKSPACE" --repo cmpl --task 
 No `--approve`, no save. Inspect/resume are read-only; redirects above are the operator's own actions. Approved save rechecks the exact bounded plan and its current parent, then exclusively creates a new revision under `.dcc/tasks/<alias>/<native-id>/`. Task directories and revision files have private POSIX modes (0700/0600); old revisions remain unchanged. Keep the original intake at its approved path if you want a current recheck. Records contain selected citation identities/limited excerpts, decisions, exclusions, owner blockers and next step, not full source exports, authentication, sessions, inboxes or reusable launch approval. Changed mapping, intake or source evidence blocks a current positive assessment and offers reinspection while preserving historical notes. A lineage cannot be silently rebound to another checkout path.
 
 Limits: 32 MiB intake, 4 MiB per selected source, 128 selected sources and 64 MiB aggregate selected bytes, 1 MiB review packet, 8 MiB compact plan/revision, and 128 revisions or 64 MiB aggregate history for one task. Required unavailable, oversized, truncated or drifting bodies cannot count as reviewed. The POSIX safety checks are not a hostile-process sandbox, encrypted storage, a complete secret classifier, or crash/multiple-writer exactly-once storage.
+
+## Draft and validate one new change
+
+The [draft CLI](../scripts/draft.py) is separate from preparation. Use it only when the developer asks for a draft of one new change. Save the current `ready_for_drafting` revision first. It must select the mapped repo, native task and exact change ID. Cite the target-owned workflow in the active scope, including on a narrowed slice; inspect any applicable `openspec/AGENTS.md` or `openspec/changes/AGENTS.md` in preparation. If the change already exists, review it separately. This helper does not revise it or make a duplicate.
+
+Use the target-approved, already-installed OpenSpec 1.8.0 CLI and its compatible Node runtime. Pass an installed executable via `--openspec`, or the JavaScript entry point via `--openspec` with an explicit `--node` executable. There is no install, download, fallback, or access to global OpenSpec configuration. The supported layout has physical `openspec/` and `openspec/changes/` directories and `openspec/config.yaml` with an unquoted top-level `schema: spec-driven`, optionally ordinary `context:` and `rules:` blocks. No custom schemas, central stores, linked planning context or multi-area delta paths. If the target uses a different workflow, stop and follow its process separately.
+
+The coordinator authors Markdown following the target workflow and clarified scope. Keep the private UTF-8 JSON outside Git. For change `export-reports`, provide an object in this shape (the strings below are placeholders, not valid draft content):
+
+```json
+{
+  "version": 1,
+  "artifacts": {
+    "openspec/changes/export-reports/proposal.md": "<proposal Markdown>",
+    "openspec/changes/export-reports/design.md": "<design Markdown>",
+    "openspec/changes/export-reports/tasks.md": "- [ ] Example unchecked task\n",
+    "openspec/changes/export-reports/specs/report-export/spec.md": "<delta spec Markdown>"
+  }
+}
+```
+
+Use one to 32 capability deltas. JSON string contents are written as exact UTF-8 bytes; include intended line breaks. Do not supply `.openspec.yaml`: the real CLI generates it in the disposable copy, and the preview displays its exact bytes too. The preview checks `new change` and `status` output against the supported artifact layout and shows the current B2 scope, exclusions and citations. It does not validate Markdown or write into the target.
+
+```sh
+umask 077
+python -B scripts/draft.py preview --workspace "$WORKSPACE" --repo cmpl --task abc123 \
+  --change export-reports --draft "$AUTHORED_JSON" --openspec "$OPENSPEC" > "$DRAFT_PREVIEW"
+# Stop here unless the developer approves the displayed paths, contents and scope.
+python -B scripts/draft.py apply --plan "$DRAFT_PREVIEW" --approve "$DISPLAYED_SHA256"
+```
+
+Copy `approval_sha256` from the reviewed preview. This is an operator assertion for those particular displayed bytes, not authentication or reusable consent. Keep the inputs unchanged. Apply checks the currently saved revision, cited inputs, exact authored bytes, tool entry identities and absence of a change; a drift or newly occupied destination requires a fresh review, not a force flag. OpenSpec runs with a disposable home and telemetry disabled, outside the target. The projection contains exact config and relevant existing main specs, not the whole checkout. Apply requires a real `validate <change> --type change --strict --json --no-interactive` pass before publishing the exact previewed artifacts together. Invalid drafts and refusals write nothing to the target. Success does not change existing spec or app bytes or write the Git index. Nothing calls ClickUp, installs software or launches the factory.
+
+Review the resulting repository artifacts, including unchecked tasks and the actual validation report. If appropriate, re-inspect the task and record current artifact citations through B2. A strict pass is structural, not content approval or evidence of an implementation. Stop before seeking separate launch approval. Limits: 2 MiB authored JSON, 8 MiB canonical plan; local trusted tools and sequential operation only. This is not a process sandbox, concurrent transaction, tool-origin verification, or guarantee against every crash or filesystem error.

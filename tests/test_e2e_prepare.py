@@ -644,7 +644,6 @@ class PreparationDistributionTest(unittest.TestCase):
                                cwd=self.root, env=clean_env(self.root), check=False, capture_output=True, text=True, timeout=15)
         self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
         with tarfile.open(archive_dir / ARCHIVE, 'r:gz') as archive:
-            self.assertEqual(len(archive.getnames()), 52)
             self.assertCountEqual(archive.getnames(), EXPECTED_MEMBERS)
             self.assertFalse(any('.dcc/' in name or name.endswith('/auth.json') for name in archive.getnames()))
             for member in archive.getmembers():

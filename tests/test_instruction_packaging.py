@@ -25,7 +25,7 @@ SKILL_CLAUSES = {
         "Follow A1–A8", "one isolated writer per worktree", "independent acceptance review in a distinct worktree",
         "approved budgets", "Keep the accepted handoff uncommitted", "Preserve target repository rules",
         "The operating developer approves launch, provider switches, scope or budget changes, external or destructive actions, and commits",
-        "A ready verdict or green preflight is not launch approval", "Live Herdr orchestration and provider fallback are not implemented",
+        "A ready verdict or green preflight is not launch approval", "The coordinator-invoked loop is available locally",
         "Do not launch agents or worktrees, switch providers, install dependencies, commit, push, publish or clean up",
         "planning and review keep their established models", "No private or global factory installation is required",
     ),
@@ -77,8 +77,9 @@ class InstructionPackagingTest(unittest.TestCase):
             "external or destructive actions, and commits", "Keep the accepted result uncommitted",
             "Never automatically commit", "Explicit approval is required for commits",
             "Planning and acceptance review retain their established models",
-            "DeepSeek fallback is for implementation workers only", "pause, preserve a resumable record",
-            "wait for explicit developer approval", "No automatic fallback", "does not implement fallback execution",
+            "DeepSeek is the approved implementation writer, not a planning or review substitute",
+            "pause, preserve a resumable record", "wait for explicit developer approval", "No automatic fallback",
+            "The loop implements only the approved writer switch, not automatic fallback",
         ):
             with self.subTest(clause=clause):
                 self.assertIn(clause, coordinator)
@@ -105,13 +106,19 @@ class InstructionPackagingTest(unittest.TestCase):
                     self.assertIn(clause, text)
                 self.assertNotRegex(text.lower(), r"\b(?:start|begin|run|repeat) the seven-question")
 
+    def test_shipped_preview_recipe_uses_optional_overall_semantics(self) -> None:
+        coordinator = self.resource("factory/COORDINATOR.md")
+        self.assertIn("--overall-limit CALLS:MINUTES", coordinator)
+        self.assertNotIn("--shared-limit", coordinator)
+        self.assertIn("No aggregate ceiling is implied", coordinator)
+
     def test_a14_documentation_separates_platform_and_workflow_boundaries(self) -> None:
         readme = self.resource("README.md")
         manual = self.resource("docs/pi-setup.md")
         for clause in (
             "Linux SDK checks are not fresh Mac or Windows evidence",
             "Fresh macOS V9/prepared exercise, full macOS V10 and Windows follow-up are NOT VERIFIED",
-            "Authenticated integrations are NOT VERIFIED", "Live Herdr orchestration and provider fallback are unsupported",
+            "Authenticated integrations are NOT VERIFIED", "The coordinator-invoked loop is available locally",
             "Registration is not overall readiness or launch approval", "indexes citations for one explicitly selected PRD",
         ):
             self.assertIn(clause, readme)
@@ -135,7 +142,7 @@ class InstructionPackagingTest(unittest.TestCase):
 
     def test_clickup_documentation_limits_authority_and_credentials(self) -> None:
         for path, clauses in {
-            "README.md": ("without checking authentication or making a request", "does not draft OpenSpec artifacts or authorize launch"),
+            "README.md": ("without checking authentication or making a request", "Preparation does not draft OpenSpec artifacts or authorize launch"),
             "docs/pi-setup.md": ("Setup makes no ClickUp request", "Setup does not perform or observe a task assessment"),
             "docs/clickup.md": ("task intake only", "Do not put a token in a command argument", "not a readiness review",
                                 "fresh macOS and Windows are **NOT VERIFIED**", "not as permission to run commands"),

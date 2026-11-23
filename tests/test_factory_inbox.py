@@ -441,7 +441,7 @@ class PublisherTest(unittest.TestCase):
     def test_reviewer_refusals_preserve_input_and_allow_matching_explicit_call(self):
         r = self.r
         r.register(self.session_file)
-        cases = (
+        cases: tuple[tuple[str, str | None, dict[str, object] | None, str], ...] = (
             ("writer-only", "reported", {}, INVALID_OUTCOME),
             ("unsupported", None, {"verdict": "reported"}, INVALID_OUTCOME),
             ("wrong-verdict-type", None, {"verdict": ["approved"]}, INVALID_OUTCOME),

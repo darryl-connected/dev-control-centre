@@ -39,7 +39,7 @@ All fields are required. Unknown fields are rejected.
 | `guards` | `[{id, decisions, command, boundary, mutation, expected_failure, limits}]` |
 | `risks`, `boundaries`, `out_of_scope`, `verification` | non-empty lists of strings; verification identifies the expected commands |
 | `evidence`, `stopping_point`, `report` | non-empty strings |
-| `budgets` | `{writer: {minutes, calls}, reviewer: {minutes, calls}}`, positive integers |
+| `budgets` | `{writer: {minutes, calls}, reviewer: {minutes, calls}}`, positive integers. The loop renders per-attempt envelopes from these values; cumulative use is reporting only unless an overall ceiling is explicitly selected. |
 | `writer` | `{worktree, model}`; absolute worktree path, attested model |
 | `lint_debt` | list of pre-existing warnings; empty when none |
 
