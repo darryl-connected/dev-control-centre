@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "routes": {
+    "coordinator": {"provider": "openai", "model": "gpt-6.1-sol", "reasoning": "high"},
+    "writer": {"provider": "deepseek", "model": "deepseek-flash", "reasoning": "model-default"},
+    "reviewer": {"provider": "openai", "model": "gpt-6.1-sol", "reasoning": "high"}
+  },
+  "attempt_limits": {
+    "writer.initial": {"calls": 60, "minutes": 25},
+    "reviewer.initial": {"calls": 60, "minutes": 25},
+    "writer.repair": {"calls": 30, "minutes": 15},
+    "reviewer.rereview": {"calls": 40, "minutes": 20}
+  },
+  "repair_limit": 2
+}

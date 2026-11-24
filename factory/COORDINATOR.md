@@ -4,14 +4,13 @@ The developer's Pi session is the coordinator, not a writer. The operating devel
 
 This package supplies the offline contract and gate commands, briefing resources, an opt-in notification adapter and a bounded coordinator-invoked loop in [scripts/factory-run.py](../scripts/factory-run.py). It does not install Pi or Herdr, copy credentials, authenticate a provider, create a second writer, or provide a daemon, crash recovery or process isolation. The loop uses real local Git, Pi and Herdr; those tools remain local prerequisites.
 
-## Role policy (O18)
+## Role policy
 
-- Default implementation writer from the first attempt: `deepseek/deepseek-flash`, using the model's supported reasoning default. Do not impose a Sol-only reasoning flag on it.
-- Coordinator and independent reviewer: `openai/gpt-6.1-sol` with high reasoning.
-- Bind and display the exact provider/model identities before launch and verify the actual role route after dispatch. Missing or mismatched routes block; never relabel a provider or silently substitute a model.
+- The shipped defaults are `deepseek/deepseek-flash` with model-default reasoning for the writer and `openai/gpt-6.1-sol` with high reasoning for the coordinator and reviewer. A developer can select other exact routes and reasoning for a new job via [workspace policy](../docs/customization.md#factory-policy-for-new-jobs).
+- Bind and display the exact provider/model identities and reasoning before launch. The manifest writer model and worktree must match the selected writer. Verify the actual role routes; the runner records but does not configure the existing coordinator session. Same-model writer and reviewer are allowed, in independent sessions and worktrees. Missing or mismatched routes block; never relabel a provider or silently substitute a model.
 - A later switch is writer-only and requires explicit operating-developer approval of a supported route named and approved in the plan. It preserves progress and uses a fresh writer attempt. It never changes the coordinator or reviewer route or the approved budgets.
 - If implementation allowance, access or a route is unavailable or mismatched, pause, preserve a resumable record and wait for explicit developer approval before any switch. Exhausted coordinator or reviewer allowance pauses that stage. No automatic fallback. Provider safety refusals stop without rerouting or retrying.
-- Planning and acceptance review retain their established models. DeepSeek is the approved implementation writer, not a planning or review substitute. The loop implements only the approved writer switch, not automatic fallback.
+- Planning and acceptance review retain their approved routes for the active job. The loop implements only the approved writer switch, not automatic fallback.
 
 ## Job sequence
 
@@ -23,18 +22,18 @@ This package supplies the offline contract and gate commands, briefing resources
    ```sh
    python -B scripts/factory-run.py preview MANIFEST --registration INBOX/registration.json \
      --writer-worktree WRITER --reviewer-worktree REVIEWER --plan-out PLAN --brief BRIEF.md \
-     [--overall-limit CALLS:MINUTES] [--used-shared CALLS:MINUTES] \
+     [--workspace WORKSPACE] [--overall-limit CALLS:MINUTES] [--used-shared CALLS:MINUTES] \
      --herdr /path/to/herdr --pi /path/to/pi --session-dir SESSIONS --agent-dir AGENT
    ```
 
-   Preview refuses a missing, expired, misbound or duplicate listener, a moved baseline, a pre-existing worktree, a missing tool, conflicting role-identity Pi arguments and a writer/reviewer route mismatch. No aggregate ceiling is implied: omit `--overall-limit` for reporting-only cumulative use, or pass it explicitly to enforce one. It creates nothing. Obtain explicit approval for that unchanged plan, then launch once:
+   Preview refuses a missing, expired, misbound or duplicate listener, a moved baseline, a pre-existing worktree, a missing tool, conflicting role-identity Pi arguments and a selected-writer/manifest mismatch. No aggregate ceiling is implied: omit `--overall-limit` for reporting-only cumulative use, or pass it explicitly to enforce one. It writes only the requested private plan. Obtain explicit approval for that unchanged plan, then launch once:
 
    ```sh
    python -B scripts/factory-run.py launch PLAN --state STATE --approve
    ```
 
-   Launch records the fixed writer attempt before it creates the Herdr pane and submits exactly one prompt. Role dispatch starts the exact absolute `--pi` executable recorded in the plan inside a Herdr pane and waits for Herdr's own Pi detection; it never resolves `pi` from `PATH`. The same approved path is rechecked before every writer, reviewer, repair and re-review dispatch. If it is missing or non-executable, the role stops before a prompt or provider request. The loop creates no profile or global configuration. `advance` reads only published inbox records; it never infers completion from idle state. It dispatches the independent reviewer, following [reviewer instructions](REVIEWER.md), in a separate worktree containing the exact candidate, routes one `changes_requested` repair to the original writer, and never stages an initial or unapproved review.
-5. Ask the original writer to repair in their own worktree, and review the exact revised candidate again. Allow at most two repair-and-review rounds inside the total approved scope and budget. Stop and escalate on drift, missing prerequisites, exhaustion, an unexercisable critical guard or a fix needing new scope, paths or budget. Never weaken a guard to fit the implementation. Escalate repeat defect classes into contract review before the next job.
+   Launch records the fixed writer attempt before it creates the Herdr pane and submits exactly one prompt. Role dispatch starts the exact absolute `--pi` executable recorded in the plan inside a Herdr pane and waits for Herdr's own Pi detection; it never resolves `pi` from `PATH`. Before role creation it checks exact identities in that Pi's offline model inventory, using the declared agent directory and any expressly approved provider extension. A missing executable, model or reasoning capability stops before a prompt. The local inventory is not proof of authenticated availability, exact effort support or live success. The loop creates no profile or global configuration. `advance` reads only published inbox records; it never infers completion from idle state. It dispatches the independent reviewer, following [reviewer instructions](REVIEWER.md), in a separate worktree containing the exact candidate, routes eligible `changes_requested` repairs to the original writer, and never stages an initial or unapproved review.
+5. Ask the original writer to repair in their own worktree, and review the exact revised candidate again. Allow only the frozen repair limit (two by default), inside the approved scope and budget. Stop and escalate on drift, missing prerequisites, exhaustion, an unexercisable critical guard or a fix needing new scope, paths or budget. Never weaken a guard to fit the implementation. Escalate repeat defect classes into contract review before the next job.
 6. Read the review report and record its attestation; run `scripts/factory-job.py integration` before any approved application of changes. The loop's `handoff` runs that gate again, refuses without `--approve`, and stages only the accepted exact candidate against the unchanged baseline:
 
    ```sh
@@ -55,13 +54,13 @@ Follow the [factory handoff](../docs/factory-handoff.md) [inbox cleanup policy](
 
 ## Coordinator budget policy
 
-Default firm declared allowances are **per attempt**: initial writer 60 calls/25 active minutes, initial reviewer 60/25, eligible repair writer 30/15 and independent re-review 40/20. The coordinator may assign equal or smaller bounded allowances inside those envelopes without another numeric approval; larger envelopes need the operating developer. These are declared local accounting rules, not authenticated provider quotas or a process watchdog.
+Default firm declared allowances are **per attempt**: initial writer 60 calls/25 active minutes, initial reviewer 60/25, eligible repair writer 30/15 and independent re-review 40/20. The developer may choose other limits in the workspace policy before approval. Per-job CLI overrides can only narrow those selected limits. These are declared local accounting rules, not authenticated provider quotas or a process watchdog.
 
-- Plan approval records the per-attempt allowances. Same-attempt resume keeps its allocation and spending; a new eligible repair or re-review receives only its own bounded allocation while full cumulative history remains visible.
+- Plan approval records the effective routes, per-attempt allowances, repair limit and a policy digest. Keep the exact plan file with the state. Editing the workspace affects only future previews. Same-attempt resume keeps its allocation and spending; a new eligible repair or re-review receives only its own bounded allocation while full cumulative history remains visible.
 - Cumulative role, coordinator and job use is recorded and reported. It is **not** a mandatory job cap and does not silently block an otherwise eligible bounded attempt.
 - An overall ceiling is optional and must be explicitly selected at plan approval with `--overall-limit CALLS:MINUTES`. It is never inherited or implied. When selected, initial shared use is derived from role/coordinator deltas or must be consistent with them; inconsistent aggregates are rejected and exhausted capacity refuses before any role side effect.
-- Attempt or selected-overall exhaustion pauses with a resumable state. It never resets an attempt, reissues another ID, retries a safety refusal or enlarges an allowance. At most two repairs apply to this job.
-- Old-format budget state is refused as `stale-state`; re-preview explicitly rather than silently reinterpreting or resetting its counters.
+- Attempt or selected-overall exhaustion pauses with a resumable state. It never resets an attempt, reissues another ID, retries a safety refusal or enlarges an allowance. A writer switch consumes one of the selected repair slots.
+- Old-format or mismatched state is refused as `stale-state`. Preserve the records and seek explicit approval for a new job; preview is not a migration or permission to reset any spending.
 
 ## Testing contract
 

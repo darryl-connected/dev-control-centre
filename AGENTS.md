@@ -3,7 +3,7 @@
 ## Scope and authority
 
 - Read `README.md` and `docs/scope.md` before proposing or implementing work.
-- This repository builds a ConnectED developer control centre, not a general personal AI operating system.
+- This repository builds a ConnectED developer control centre, not a general personal AI operating system. These contribution rules govern changes to this kit; they are not restrictions on someone customizing their own workspace, persona, skills, integrations or workflow. The factory is optional for consumers.
 - Current route: Pi + Herdr. Validate macOS first. Windows follows. Codex and CC Switch are deferred.
 - The scope snapshot defines product intent, not proof of implemented capabilities or a frozen factory brief.
 - Surface conflicting requirements and missing owner decisions. Do not silently broaden the work.
@@ -24,7 +24,7 @@
 
 - Read sources before asking task questions. Ask focused questions one at a time.
 - Readiness is not permission to launch the factory. An independent partial slice requires its own approved scope and acceptance criteria.
-- ClickUp access is read-only. Do not introduce comments, status changes or other writes as part of v1.
+- The kit ships ClickUp read-only. Do not introduce comments, status changes or other writes as part of v1. Users may build separate extensions with appropriate access and approval.
 - Shared Git meeting notes are primary context, not automatic authority to amend a PRD. Keep personal meeting intake separate from shared publication.
 - Retain source references and task continuity without creating a competing project specification.
 - Preserve target repositories' own instructions and engineering/OpenSpec workflows.
@@ -34,7 +34,7 @@
 - Ship reproducible Pi + Herdr setup, dependency/version requirements, credential-free configuration and readiness checks. Do not assume the developer has Samson's global agent setup.
 - Adapt reusable technical operating instructions: scope discipline, source-first clarification, explicit approvals and evidence-based verification. Remove Samson's identity, voice/persona, Darryl's personal context and machine-specific assumptions.
 - Do not copy personal authentication files, private records, unrelated extensions or integrations. Declare and supply setup for every required resource.
-- Ask before modifying existing settings; do not silently replace global instructions or configuration.
+- Ask before modifying existing settings; do not silently replace global instructions or configuration. A user may choose their own instructions instead of the shipped template.
 - Prove actual instruction loading and the complete prepared workflow on a fresh macOS developer environment with no Samson vault or personal global setup. Use only the repository, declared prerequisites and independently supplied credentials/access.
 - Documentation-only checks do not establish any of those runtime outcomes.
 
@@ -42,8 +42,8 @@
 
 - Encode the known DeepSeek connection setup in credential-free instructions/configuration rather than requiring access to Darryl's machine or memory. Darryl will provide a separate team API key. Do not reopen provisioning research without a new need and approval.
 - Never include real keys, tokens, personal meeting records or copied global credentials in distributed files.
-- DeepSeek fallback is implementation-workers-only. Pause and preserve progress before offering a switch, then wait for explicit developer approval.
-- Planning and acceptance review retain established models. Exhausted allowance pauses those stages; it does not authorise a provider switch.
+- For kit development follow the approved job's role policy; the product's configurable defaults do not alter it. For product jobs, bind selected routes and limits before launch. A later switch is implementation-worker-only: pause and preserve progress, then wait for explicit developer approval of a planned route.
+- Planning and acceptance review retain their approved routes within a job. Exhausted allowance pauses those stages; it does not authorise a provider switch.
 - Known connection setup does not prove worker/reviewer isolation. Verify the boundary during implementation.
 - Do not modify Samson's global factory policy or a user's global harness configuration as a side effect.
 

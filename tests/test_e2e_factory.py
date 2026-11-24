@@ -18,7 +18,7 @@ from test_factory_job import BASE_CONTENTS, Fixture, clean_env, digest, json_dig
 
 PACKAGE = Path(__file__).resolve().parent.parent
 ARCHIVE = "dev-control-centre.tar.gz"
-SCOPE_SHA256 = "deaf692dd0d407c1f7606698224fc48d80cedfde48acc0c4e6d3dceee2ce89d8"
+SCOPE_SHA256 = "7f763955a7bc13e805167545356e4ddb0e5b2d334c5130faf9988dfba9404364"
 # Distribution expectation fixed here, not imported from the builder.
 EXPECTED_MEMBERS = {
     "AGENTS.md", "LICENSE", "README.md", "docs/scope.md", "requirements-dev.txt",
@@ -42,7 +42,8 @@ EXPECTED_MEMBERS = {
     "tests/test_prepare.py", "tests/test_e2e_prepare.py",
     "scripts/draft.py", "scripts/lib/openspec_draft.py", "tests/test_draft.py", "tests/test_e2e_draft.py",
     "scripts/factory-run.py", "scripts/lib/factory_run.py", "tests/fixtures/factory-run-provider.ts",
-    "tests/test_factory_run.py", "tests/test_e2e_factory_run.py",
+    "tests/test_factory_run.py", "tests/test_e2e_factory_run.py", "tests/test_workspace_policy.py",
+    "docs/customization.md", "scripts/lib/workspace_policy.py", "templates/dcc/policy.json",
 }
 EXPECTED_EXECUTABLES = {
     "scripts/build.py", "scripts/factory-alignment.py", "scripts/factory-inbox.py", "scripts/factory-job.py",

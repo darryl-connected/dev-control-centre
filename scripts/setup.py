@@ -151,67 +151,116 @@ def command(name: str, *args: str) -> dict[str, Any]:
     return result | {"status": "working", "scope": "local command only"}
 
 
-def check_skill_conflicts(check: Inspection, root: Path) -> None:
-    if not check.directory(root):
-        return
-    for child in sorted(root.iterdir()):
-        if child.name.startswith(".") or child.name == "node_modules":
+def skill_name(data: bytes, path: Path) -> str | None:
+    """Recognize common static frontmatter without loading Pi or executing packages."""
+    lines = data.decode("utf-8-sig").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None
+    end = next((i for i, line in enumerate(lines[1:], 1) if line.strip() == "---"), None)
+    if end is None:
+        raise ValueError("unrecognized skill frontmatter")
+    key_pattern = r"(?:[A-Za-z][A-Za-z0-9_-]*|'[A-Za-z][A-Za-z0-9_-]*'|\"[A-Za-z][A-Za-z0-9_-]*\")"
+    metadata = {}
+    for line in lines[1:end]:
+        if not line.strip() or line[0].isspace() or line.startswith("#"):
             continue
-        info = check.stat_path(child)
-        if info is None:
-            raise ValueError(f"skill discovery changed during inspection: {child}")
-        if stat.S_ISDIR(info.st_mode):
-            check_skill_conflicts(check, child)
-        elif child.suffix == ".md":
-            data = check.file(child, required=True)
-            assert data is not None
-            lines = data.decode("utf-8-sig").splitlines()
-            if not lines or not lines[0].startswith("---"):
-                continue
-            end = next((i for i, line in enumerate(lines[1:], 1) if line.startswith("---")), None)
-            if end is None:
-                continue
-            # Do not implement a second YAML parser. Accept only an unambiguous, simple top-level name
-            # and block constructs that could change the mapping (quoted keys, merges, flow YAML, etc.).
-            keys = [line for line in lines[1:end] if line and not line[0].isspace() and not line.startswith("#")]
-            names = [line for line in keys if re.match(r"name\s*:", line)]
-            name = re.fullmatch(r"name\s*:\s*(['\"]?)([a-z0-9-]+)\1(?:\s+#.*)?\s*", names[0]) if len(names) == 1 else None
-            if not name or any(not re.match(r"[a-zA-Z][a-zA-Z0-9-]*\s*:", line) for line in keys):
-                raise ValueError(f"cannot establish the skill name safely: {child}")
-            # Pi falls back to the parent directory when YAML types the name as a non-string.
-            label = name[2]
-            if not name[1] and (not label[0].isalpha() or label in {"null", "true", "false"}):
-                label = child.parent.name
-            if label in SKILLS:
-                raise ValueError(f"conflicting skill name {label}: {child}")
+        key = re.fullmatch(rf"({key_pattern})\s*:\s*(.*)", line)
+        if not key or key[1].strip("'\"") in metadata:
+            raise ValueError("unrecognized skill frontmatter")
+        metadata[key[1].strip("'\"")] = key[2].strip()
+    if "description" not in metadata:
+        return None
+    raw = metadata.get("name", "")
+    if re.fullmatch(r"(?:null|Null|NULL|true|True|TRUE|false|False|FALSE|~|[0-9]+)?(?:\s+#.*)?", raw):
+        return path.parent.name
+    match = re.fullmatch(r"(['\"]?)([A-Za-z0-9_-]+)\1(?:\s+#.*)?", raw)
+    if not match:
+        raise ValueError("unrecognized skill name")
+    return match[2]
 
 
-def guarded_environment(check: Inspection, workspace: Path) -> None:
+def resources(check: Inspection, workspace: Path, project_settings: dict) -> tuple[Path, bool, dict, list[str]]:
     home = local_path(str(Path.home()))
     agent = local_path(os.environ.get("PI_CODING_AGENT_DIR") or str(home / ".pi/agent"))
-    if workspace == home or any(
-        workspace.is_relative_to(path) or path.is_relative_to(workspace) for path in (agent, home / ".agents")
+    if workspace == home.resolve() or any(
+        workspace.is_relative_to(path) or path.is_relative_to(workspace)
+        for alias in (agent, home / ".agents") for path in (alias, alias.resolve())
     ):
         raise ValueError("use a personal workspace separate from HOME and the Pi user configuration")
-    check.directory(agent)
-    user_settings = agent / "settings.json"
-    data = check.file(user_settings)
-    if data is not None:
-        settings = json_object(data, user_settings)
-        for key in ("packages", "skills", "extensions"):
-            if key in settings and settings[key] != []:
-                raise ValueError(f"cannot rule out Pi resource conflicts with user {key} configured in {user_settings}")
-    check.file(agent / "APPEND_SYSTEM.md")
-    # Executable extensions can supply resources dynamically. Setup never evaluates them.
-    for directory in (agent / "extensions", workspace / ".pi/extensions"):
-        if check.directory(directory) and any(directory.iterdir()):
-            raise ValueError(f"cannot rule out Pi resource conflicts with existing extensions: {directory}")
-    for directory in (agent / "skills", home / ".agents/skills", workspace / ".pi/skills",
-                      *(parent / ".agents/skills" for parent in (workspace, *workspace.parents))):
-        check_skill_conflicts(check, directory)
+    advisories: set[str] = set()
+    matches: dict[str, dict[str, str]] = {name: {} for name in SKILLS}
+    user_path = agent / "settings.json"
+    user_append = agent / "APPEND_SYSTEM.md"
+    user_settings = {}
+    try:
+        user_data = check.file(user_path)
+        if user_data is not None:
+            user_settings = json_object(user_data, user_path)
+    except (OSError, ValueError, TypeError) as error:
+        advisories.add(f"user settings not inspected: {error}")
+    try:
+        has_user_append = check.file(user_append) is not None
+    except (OSError, ValueError):
+        has_user_append = user_append.exists()
+        advisories.add(f"user append could not be checked: {user_append}")
+
+    def discover(path: Path, scope: str, excluded: set[Path], *, root: bool = True) -> None:
+        try:
+            info = check.stat_path(path)
+            if info is None:
+                check.states[str(path)] = None
+            elif stat.S_ISDIR(info.st_mode):
+                check.directory(path)
+                for child in sorted(path.iterdir()):
+                    if not child.name.startswith(".") and child.name != "node_modules" and (
+                        child.is_dir() or child.name == "SKILL.md" or (root and child.suffix == ".md")
+                    ):
+                        discover(child, scope, excluded, root=False)
+            elif stat.S_ISREG(info.st_mode) and path.suffix == ".md" and path not in excluded:
+                data = check.file(path, required=True)
+                assert data is not None
+                label = skill_name(data, path)
+                if label is not None and label in SKILLS and path != KIT / "skills" / label / "SKILL.md":
+                    matches[label].setdefault(str(path), scope)
+            else:
+                check.states[str(path)] = [info.st_dev, info.st_ino, info.st_mode]
+        except (OSError, ValueError) as error:
+            advisories.add(f"skill discovery advisory for {path}: {error}")
+
+    def resource_path(entry: str, base: Path) -> Path:
+        if entry.startswith("~/"):
+            return Path(os.path.abspath(home / entry[2:]))
+        return Path(os.path.abspath(base / entry))
+
+    user_agents = home / ".agents/skills"
+    project_agents = (parent / ".agents/skills" for parent in (workspace, *workspace.parents) if parent != home)
+    sources = (("user", agent, user_settings, (agent / "skills", user_agents)),
+               ("workspace", workspace / ".pi", project_settings, (workspace / ".pi/skills", *project_agents)))
+    for scope, base, settings, roots in sources:
+        for key in ("packages", "extensions"):
+            if settings.get(key):
+                advisories.add(f"{scope} {key} in {base / 'settings.json'} were not evaluated")
+        extension_dir = base / "extensions"
+        if extension_dir.exists() or extension_dir.is_symlink():
+            advisories.add(f"existing extensions at {extension_dir} were not evaluated")
+        configured = settings.get("skills", [])
+        if not isinstance(configured, list) or any(not isinstance(item, str) for item in configured):
+            advisories.add(f"unrecognized {scope} skills setting in {base / 'settings.json'}")
+            configured = []
+        excluded = {resource_path(item[1:], base) for item in configured if item.startswith("-")}
+        for root in roots:
+            discover(root, scope, excluded)
+        for item in configured:
+            if not item or item.startswith(("!", "-", "+")) or any(token in item for token in "*?[]{}"):
+                if item.startswith(("!", "+")) or any(token in item for token in "*?[]{}"):
+                    advisories.add(f"{scope} skill filters need a Pi resource check after setup")
+                continue
+            discover(resource_path(item, base), scope, excluded)
+    return user_append, has_user_append, matches, sorted(advisories)
 
 
-def inspect(workspace: Path, entries: list[str]) -> tuple[dict, dict[Path, bytes], dict]:
+def inspect(workspace: Path, entries: list[str], append: str, choices: dict[str, str],
+            no_skills: bool) -> tuple[dict, dict[Path, bytes], dict]:
     check = Inspection()
     check.directory(workspace, required=True)
     if workspace.is_relative_to(KIT) or KIT.is_relative_to(workspace):
@@ -234,32 +283,79 @@ def inspect(workspace: Path, entries: list[str]) -> tuple[dict, dict[Path, bytes
         if outcome.get("status") != "working" or outcome.get("stdout") != value:
             raise ValueError(f"Git read blocked for {name}: {outcome.get('reason', 'supply the Git checkout root')}")
         repo_results[name] = outcome
-    guarded_environment(check, workspace)
-    skill_paths = [KIT / "skills" / name / "SKILL.md" for name in SKILLS]
-    for path in skill_paths:
-        check.file(path, required=True)
-    template = check.file(KIT / "templates/pi/APPEND_SYSTEM.md", required=True)
+    settings_path = workspace / ".pi/settings.json"
+    project_append = workspace / ".pi/APPEND_SYSTEM.md"
+    settings_bytes = check.file(settings_path)
+    project_settings = {} if settings_bytes is None else json_object(settings_bytes, settings_path)
+    append_bytes = check.file(project_append)
+    user_append, has_user_append, matches, advisories = resources(check, workspace, project_settings)
+    template_path = KIT / "templates/pi/APPEND_SYSTEM.md"
+    template = check.file(template_path, required=True)
     assert template is not None
-    desired = {
-        workspace / ".pi/settings.json": json_bytes({"skills": [str(path) for path in skill_paths]}),
-        workspace / ".pi/APPEND_SYSTEM.md": template,
-        saved: json_bytes({"version": 1, "workspace": str(workspace), "kit": str(KIT), "repositories": repos}),
-    }
+    mapping = {"version": 1, "workspace": str(workspace), "kit": str(KIT), "repositories": repos}
+    if current is not None and json_object(current, saved) != mapping:
+        raise ValueError(f"conflict: existing mapping differs at {saved}; setup will not edit it")
+    desired: dict[Path, bytes] = {saved: current if current is not None else json_bytes(mapping)}
+    blockers = []
+    skill_plan = {}
+    configured_skills = project_settings.get("skills", [])
+    additions = []
+    if settings_bytes is not None:
+        desired[settings_path] = settings_bytes
+    for name in SKILLS:
+        path = KIT / "skills" / name / "SKILL.md"
+        check.file(path, required=True)
+        conflicts = matches[name]
+        choice = choices.get(name)
+        already_registered = isinstance(configured_skills, list) and str(path) in configured_skills
+        # New settings can exclude a project-scoped file. User-scoped auto/configured
+        # resources must be disabled in their own scope, never by writing user settings.
+        project_excludable = settings_bytes is None and all(scope == "workspace" for scope in conflicts.values())
+        status = "preserved" if settings_bytes is not None else "not-registered"
+        if no_skills or choice == "keep":
+            status = "already-registered; change existing settings manually" if already_registered else "keep-existing"
+        elif conflicts and choice is None and (settings_bytes is None or already_registered):
+            status = "choice-required"
+            if settings_bytes is None:
+                blockers.append(f"conflicting skill name {name}; use --skill-choice {name}=keep or {name}=register")
+        elif choice == "register" and conflicts and not project_excludable:
+            status = "manual-collision-resolution"
+            blockers.append(f"conflicting skill name {name}; disable the listed resources in their Pi scope and inspect again")
+        elif settings_bytes is None:
+            status = "register"
+            additions.extend([str(path), *(f"-{conflict}" for conflict in conflicts)])
+        elif already_registered:
+            status = "already-registered"
+        elif choice == "register":
+            status = "manual-registration"
+            advisories.append(f"add the selected {name} kit path to existing project settings yourself, then inspect again")
+        skill_plan[name] = {"kit": str(path), "existing": conflicts, "selection": status,
+                            "choices": [f"--skill-choice {name}=keep", f"--skill-choice {name}=register"]}
+    if additions:
+        desired[settings_path] = json_bytes({"skills": additions})
+    if append_bytes is not None:
+        desired[project_append] = append_bytes
+        if append == "use-template" and append_bytes != template:
+            blockers.append(f"existing {project_append} is custom; use keep-personal or edit it yourself")
+    elif append == "use-template":
+        desired[project_append] = template
     actions = {}
     for path, content in desired.items():
-        on_disk = check.file(path)
-        if on_disk is not None:
-            if path.suffix == ".json":
-                json_object(on_disk, path)
-            if on_disk != content:
-                raise ValueError(f"conflict: existing {path} is not an identical kit resource; no merge or overwrite")
         actions[str(path.relative_to(workspace))] = {
-            "action": "unchanged" if on_disk is not None else "create", "sha256": hashlib.sha256(content).hexdigest(),
+            "action": "unchanged" if check.states[str(path)] is not None else "create",
+            "sha256": hashlib.sha256(content).hexdigest(),
         }
-    plan = {"version": 1, "workspace": str(workspace), "repositories": repos,
-            "instruction_precedence": SHADOW, "actions": actions, "preconditions": check.states}
+    trusted_append = project_append if project_append in desired else user_append if has_user_append else None
+    plan = {"version": 2, "workspace": str(workspace), "repositories": repos,
+            "instruction_precedence": SHADOW, "actions": actions, "preconditions": check.states,
+            "append": {"choice": append, "choices": ["keep-personal", "use-template"],
+                       "template": str(template_path), "trusted": str(trusted_append) if trusted_append else None,
+                       "untrusted": str(user_append) if has_user_append else None},
+            "skills": skill_plan, "skill_choices": choices, "no_skills": no_skills,
+            "blockers": blockers, "advisories": advisories}
     readiness = {
-        "workspace_configuration": "configured" if all(item["action"] == "unchanged" for item in actions.values()) else "planned",
+        "workspace_configuration": ("blocked" if blockers else "configured"
+                                    if all(item["action"] == "unchanged" for item in actions.values()) else "planned"),
         "local_checks": {"pi": command("pi", "--version"), "herdr": command("herdr", "--version"), "repositories": repo_results},
         "capabilities": {
             "knowledge_integration": knowledge_readiness(workspace, (KIT, *(Path(path) for path in repos.values()))),
@@ -286,19 +382,40 @@ def apply(plan: dict, desired: dict[Path, bytes]) -> None:
     # Preflight all names and bytes before creating any directory. Exclusive creation is deliberate:
     # never replace, even if another process changes a file after the last precondition check.
     workspace = Path(plan["workspace"])
-    for path in desired:
-        if plan["actions"][str(path.relative_to(workspace))]["action"] == "create":
-            parent = workspace if plan["preconditions"][str(path.parent)] is None else path.parent
-            if not os.access(parent, os.W_OK | os.X_OK):
-                raise ValueError(f"setup destination is not writable: {parent}")
-    for directory in (workspace / ".pi", workspace / ".dcc"):
-        if plan["preconditions"][str(directory)] is None:
-            directory.mkdir(mode=0o700)
-    for path, content in desired.items():
-        if plan["actions"][str(path.relative_to(workspace))]["action"] == "create":
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    pending = {path: content for path, content in desired.items()
+               if plan["actions"][str(path.relative_to(workspace))]["action"] == "create"}
+    directories = sorted({path.parent for path in pending})
+    for directory in directories:
+        parent = workspace if plan["preconditions"][str(directory)] is None else directory
+        if not os.access(parent, os.W_OK | os.X_OK):
+            raise ValueError(f"setup destination is not writable: {parent}")
+    workspace_fd = os.open(workspace, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    opened = {}
+    try:
+        for directory in directories:
+            if plan["preconditions"][str(directory)] is None:
+                os.mkdir(directory.name, mode=0o700, dir_fd=workspace_fd)
+            opened[directory] = os.open(directory.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                        dir_fd=workspace_fd)
+        for path, content in pending.items():
+            fd = os.open(path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600,
+                         dir_fd=opened[path.parent])
             with os.fdopen(fd, "wb") as handle:
                 handle.write(content)
+    finally:
+        for directory_fd in opened.values():
+            os.close(directory_fd)
+        os.close(workspace_fd)
+
+
+def skill_choices(entries: list[str]) -> dict[str, str]:
+    choices = {}
+    for entry in entries:
+        name, _, choice = entry.partition("=")
+        if name not in SKILLS or choice not in {"keep", "register"} or name in choices:
+            raise ValueError("expected unique --skill-choice NAME=keep or NAME=register for a kit skill")
+        choices[name] = choice
+    return choices
 
 
 def main() -> int:
@@ -307,6 +424,9 @@ def main() -> int:
     preview = sub.add_parser("inspect", help="print a read-only JSON plan and local observations")
     preview.add_argument("--workspace", required=True)
     preview.add_argument("--repo", action="append", default=[], metavar="NAME=PATH")
+    preview.add_argument("--append", choices=("keep-personal", "use-template"), default="keep-personal")
+    preview.add_argument("--skill-choice", action="append", default=[], metavar="NAME=keep|register")
+    preview.add_argument("--no-skills", action="store_true", help="do not register kit skills")
     install = sub.add_parser("apply", help="create only the missing resources in a still-current plan")
     install.add_argument("--plan", required=True, type=Path, help="JSON output saved from inspect")
     install.add_argument("--approve", action="store_true")
@@ -314,28 +434,43 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.mode == "inspect":
-            preview_plan, _, readiness = inspect(local_path(args.workspace), args.repo)
+            choices = skill_choices(args.skill_choice)
+            if choices and args.no_skills:
+                raise ValueError("select --no-skills or individual --skill-choice values, not both")
+            preview_plan, _, readiness = inspect(local_path(args.workspace), args.repo, args.append, choices, args.no_skills)
             print(json_bytes({"ok": True, "plan": preview_plan, "readiness": readiness}).decode(), end="")
             return 0
         if not args.approve:
             raise ValueError("apply requires explicit --approve after inspecting the plan")
-        if not args.acknowledge_instruction_shadow:
-            raise ValueError(f"apply requires explicit --acknowledge-instruction-shadow. {SHADOW}")
         plan_path = local_path(str(args.plan))
         data = Inspection().file(plan_path, required=True)
         assert data is not None
         plan = json_object(data, plan_path).get("plan")
-        if not isinstance(plan, dict) or not isinstance(plan.get("workspace"), str) or not isinstance(plan.get("repositories"), dict):
-            raise TypeError("invalid setup plan: expected JSON output from inspect")
+        if (not isinstance(plan, dict) or plan.get("version") != 2 or not isinstance(plan.get("workspace"), str)
+                or not isinstance(plan.get("repositories"), dict) or not isinstance(plan.get("append"), dict)
+                or not isinstance(plan.get("skill_choices"), dict) or type(plan.get("no_skills")) is not bool):
+            raise TypeError("invalid setup plan: inspect again for a version 2 plan")
         repos = plan["repositories"]
+        append = plan["append"].get("choice")
+        if append not in ("keep-personal", "use-template"):
+            raise ValueError("invalid setup plan: unknown append choice")
+        choices = skill_choices([f"{name}={choice}" for name, choice in plan["skill_choices"].items()])
+        if plan["no_skills"] and choices:
+            raise ValueError("invalid setup plan: contradictory skill choices")
         if not all(isinstance(path, str) for path in repos.values()):
             raise ValueError("invalid setup plan: expected local repository paths")
         try:
-            observed, desired, readiness = inspect(local_path(plan["workspace"]), [f"{name}={path}" for name, path in repos.items()])
+            observed, desired, readiness = inspect(local_path(plan["workspace"]),
+                 [f"{name}={path}" for name, path in repos.items()], append, choices, plan["no_skills"])
         except (OSError, ValueError, TypeError) as error:
             raise ValueError(f"stale or invalid setup plan; inspect again: {error}") from error
         if json_bytes(observed) != json_bytes(plan):
             raise ValueError("stale setup plan; inspect again before applying")
+        if observed["blockers"]:
+            raise ValueError("; ".join(observed["blockers"]))
+        if (observed["actions"].get(".pi/APPEND_SYSTEM.md", {}).get("action") == "create"
+                and not args.acknowledge_instruction_shadow):
+            raise ValueError(f"apply requires explicit --acknowledge-instruction-shadow. {SHADOW}")
         apply(observed, desired)
         readiness["workspace_configuration"] = "configured"
         print(json_bytes({"ok": True, "applied": observed["actions"], "readiness": readiness}).decode(), end="")

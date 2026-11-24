@@ -24,6 +24,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, TypeGuard
 
+from workspace_policy import parse_identity
+
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 SCHEMA_VERSION = 1
@@ -104,7 +106,6 @@ AGENTS_READ_RE = r"read AGENTS\.md"
 COMMIT_RE = re.compile(r"\b(?:base commit|based on)\b[^0-9a-f\n]{0,20}([0-9a-f]{7,40}|NONE)\b", re.IGNORECASE)
 FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
 HASH_RE = re.compile(r"[0-9a-f]{64}")
-SOL_MODEL_RE = re.compile(r"(?:[a-z0-9][a-z0-9_.-]*/)?gpt-[0-9]+(?:\.[0-9]+)*-sol")
 PLACEHOLDER_RE = re.compile(r"<[A-Za-z][^<>\n]{0,80}>")
 
 # Markdown fields kept only for historical briefs. New jobs use the manifest.
@@ -142,12 +143,18 @@ ALIGNMENT_FILE_FINGERPRINTS = (
     "LICENSE",
     "README.md",
     "docs/scope.md",
+    "docs/customization.md",
+    "docs/pi-setup.md",
     "factory/COORDINATOR.md",
     "factory/WORKER.md",
     "factory/REVIEWER.md",
     "requirements-dev.txt",
     "scripts/build.py",
     "scripts/lib/factory_contract.py",
+    "scripts/lib/workspace_policy.py",
+    "scripts/lib/factory_run.py",
+    "scripts/factory-run.py",
+    "scripts/setup.py",
     "scripts/factory-job.py",
     "scripts/factory-alignment.py",
     "scripts/validate-brief.py",
@@ -157,6 +164,10 @@ ALIGNMENT_FILE_FINGERPRINTS = (
     "tests/test_instruction_packaging.py",
     "tests/test_e2e_factory.py",
     "templates/pi/APPEND_SYSTEM.md",
+    "templates/dcc/policy.json",
+    "skills/setup/SKILL.md",
+    "skills/factory/SKILL.md",
+    "skills/grilling/SKILL.md",
     "references/factory-contract.md",
 )
 
@@ -915,9 +926,9 @@ def render_brief(manifest: dict) -> str:
     lines.append(
         f"Budget: per-attempt declared allowances, initial writer up to {writer_budget.get('calls', '')} calls or "
         f"{writer_budget.get('minutes', '')} active minutes; initial reviewer up to {reviewer_budget.get('calls', '')} "
-        f"calls or {reviewer_budget.get('minutes', '')} active minutes; eligible repair writer 30/15; "
-        "independent re-review 40/20. Cumulative role/coordinator/job use is reported and is not a mandatory "
-        "aggregate cap unless an overall ceiling is explicitly selected at plan approval. Up to two repair rounds."
+        f"calls or {reviewer_budget.get('minutes', '')} active minutes in the manifest. When using the runner, "
+        "use the exact approved plan and dispatched attempt allowance; defaults are not job authority. Cumulative "
+        "role/coordinator/job use is reported and is not a mandatory cap unless an overall ceiling was selected."
     )
     lines.append(f"Stopping point: {manifest.get('stopping_point', '')}")
     lines.append("")
@@ -1376,6 +1387,9 @@ def review_receipt_errors(
     candidate_files: dict,
     candidate_path: Path,
     target_path: Path,
+    *,
+    expected_reviewer: str | None = None,
+    expected_review_tree: Path | None = None,
 ) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     notes: list[str] = []
@@ -1399,16 +1413,13 @@ def review_receipt_errors(
     else:
         _keys(reviewer, REVIEW_REVIEWER_KEYS, "review.reviewer", errors)
     model = reviewer.get("model")
-    if not _nonempty(model):
-        errors.append("review.reviewer.model: must name the reviewer model")
+    try:
+        parse_identity(model, "review.reviewer.model")
+    except ValueError as error:
+        errors.append(str(error))
     else:
-        lower_model = model.strip().lower()
-        if "deepseek" in lower_model or not SOL_MODEL_RE.fullmatch(lower_model):
-            errors.append(f"review.reviewer.model: acceptance review must run on Sol, not {model!r}")
-        writer_model = manifest["writer"]["model"].strip().lower()
-        # Model identity is independent of how a provider prefix is spelled.
-        if lower_model.rsplit("/", 1)[-1] == writer_model.rsplit("/", 1)[-1]:
-            errors.append("review.reviewer.model: the reviewer must not be the writer's model")
+        if expected_reviewer is not None and model != expected_reviewer:
+            errors.append("review.reviewer.model: does not match the approved reviewer route")
 
     review_tree_raw = reviewer.get("worktree")
     if not _nonempty(review_tree_raw) or not Path(review_tree_raw).is_absolute():
@@ -1416,6 +1427,8 @@ def review_receipt_errors(
     else:
         try:
             review_tree = repo_toplevel(review_tree_raw)
+            if expected_review_tree is not None and review_tree != expected_review_tree:
+                errors.append("review.reviewer.worktree: does not match the dispatched review worktree")
             distinct = {real_path(candidate_path), real_path(target_path)}
             writer_tree = manifest.get("writer", {}).get("worktree")
             if writer_tree:
@@ -1544,6 +1557,9 @@ def integration(
     candidate: str | Path,
     receipt: dict,
     root: str | Path | None = None,
+    *,
+    expected_reviewer: str | None = None,
+    expected_review_tree: Path | None = None,
 ) -> dict:
     errors, warnings = validate_manifest(manifest, require_baseline=True)
     notes: list[str] = []
@@ -1629,6 +1645,8 @@ def integration(
         files,
         candidate_root,
         target,
+        expected_reviewer=expected_reviewer,
+        expected_review_tree=expected_review_tree,
     )
     errors.extend(receipt_errors)
     notes.extend(receipt_notes)

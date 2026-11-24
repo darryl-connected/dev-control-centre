@@ -13,29 +13,27 @@ sys.path.insert(0, str(KIT / "scripts/lib"))
 sys.path.insert(0, str(KIT / "tests"))
 
 import factory_run as loop
+import workspace_policy as policies
 from test_e2e_factory_run import HERDR_EXE, PI_EXE, LoopFixture, put
 
 
 class RoutePolicy(unittest.TestCase):
     def test_declared_defaults_and_switch_rules(self):
-        loop.validate_routes(loop.ROUTES)
-        self.assertEqual(loop.route_text(loop.ROUTES["writer"]), "deepseek/deepseek-flash")
-        self.assertEqual(loop.ROUTES["coordinator"]["reasoning"], "high")
-        self.assertEqual(loop.ROUTES["reviewer"]["reasoning"], "high")
-        self.assertEqual(loop.ROUTES["writer"]["reasoning"], "model-default")
+        routes = policies.effective_policy({"version": 1})["routes"]
+        self.assertEqual(loop.route_text(routes["writer"]), "deepseek/deepseek-flash")
+        self.assertEqual(routes["coordinator"]["reasoning"], "high")
+        self.assertEqual(routes["reviewer"]["reasoning"], "high")
+        self.assertEqual(routes["writer"]["reasoning"], "model-default")
 
-    def test_reviewer_or_coordinator_cannot_take_the_writer_route(self):
-        for role in ("reviewer", "coordinator"):
-            routes = {name: dict(value) for name, value in loop.ROUTES.items()}
-            routes[role] = dict(loop.WRITER)
-            with self.subTest(role=role), self.assertRaises(loop.RunError):
-                loop.validate_routes(routes)
+    def test_same_exact_route_for_separate_roles_and_distinct_reasoning(self):
+        routes = policies.effective_policy({"version": 1, "routes": {
+            "writer": {"provider": "test-provider", "model": "Org/Example-1", "reasoning": "minimal"},
+            "reviewer": {"provider": "test-provider", "model": "Org/Example-1", "reasoning": "high"},
+        }})["routes"]
+        self.assertEqual(loop.route_text(routes["writer"]), loop.route_text(routes["reviewer"]))
+        self.assertNotEqual(routes["writer"]["reasoning"], routes["reviewer"]["reasoning"])
 
-    def test_reasoning_and_model_identity_are_bound(self):
-        routes = {name: dict(value) for name, value in loop.ROUTES.items()}
-        routes["reviewer"]["reasoning"] = "low"
-        with self.assertRaises(loop.RunError):
-            loop.validate_routes(routes)
+    def test_model_identity_disallows_patterns(self):
         with self.assertRaises(loop.RunError):
             loop.parse_route("deepseek", role="writer")
         with self.assertRaises(loop.RunError):
@@ -48,7 +46,7 @@ class RoutePolicy(unittest.TestCase):
         self.assertEqual(loop.next_attempt(state, "reviewer"), "a2")
 
     def test_per_attempt_allowance_is_conserved_and_independent(self):
-        state: dict = {"policy": loop.POLICY, "attempt_limits": dict(loop.ATTEMPT_ENVELOPES),
+        state: dict = {"policy": loop.POLICY, "attempt_limits": dict(policies.ATTEMPT_LIMITS),
                        "attempt_allocations": {}, "attempt_usage": {}, "attempt_kinds": {}, "attempts": [],
                        "usage": {"writer": {"calls": 0, "minutes": 0}, "reviewer": {"calls": 0, "minutes": 0},
                                  "coordinator": {"calls": 0, "minutes": 0}, "shared": {"calls": 0, "minutes": 0}},
@@ -67,7 +65,7 @@ class RoutePolicy(unittest.TestCase):
         self.assertEqual(state["blocked"]["scope"], "attempt")
 
     def test_optional_overall_derivation_has_no_double_count(self):
-        state: dict = {"policy": loop.POLICY, "attempt_limits": dict(loop.ATTEMPT_ENVELOPES),
+        state: dict = {"policy": loop.POLICY, "attempt_limits": dict(policies.ATTEMPT_LIMITS),
                        "attempt_allocations": {}, "attempt_usage": {}, "attempt_kinds": {}, "attempts": [],
                        "usage": {"writer": {"calls": 3, "minutes": 3}, "reviewer": {"calls": 0, "minutes": 0},
                                  "coordinator": {"calls": 1, "minutes": 1}, "shared": {"calls": 4, "minutes": 4}},

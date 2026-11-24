@@ -79,8 +79,11 @@ function validateFixture(root, cwd, home, agentDir) {
 }
 
 async function main() {
-  insist(process.argv.length === 4 && process.argv[2] === "--fixture-root",
-    "usage: node scripts/verify-pi-resources.mjs --fixture-root ABSOLUTE_FIXTURE_ROOT");
+  insist((process.argv.length === 4 || process.argv.length === 6) && process.argv[2] === "--fixture-root" &&
+    (process.argv.length === 4 || process.argv[4] === "--append"),
+    "usage: node scripts/verify-pi-resources.mjs --fixture-root ABSOLUTE_FIXTURE_ROOT [--append template|keep-personal|edited-workspace]");
+  const appendMode = process.argv[5] ?? "template";
+  insist(["template", "keep-personal", "edited-workspace"].includes(appendMode), "unknown fixture append expectation");
   const root = resolve(process.argv[3]);
   const home = join(root, "home");
   const cwd = join(root, "workspace");
@@ -101,6 +104,12 @@ async function main() {
   const globalAppend = join(agentDir, "APPEND_SYSTEM.md");
   const neutral = readFileSync(join(kit, "templates/pi/APPEND_SYSTEM.md"), "utf8");
   const global = fileStat(globalAppend) ? readFileSync(globalAppend, "utf8").trim() : undefined;
+  const project = fileStat(appendPath) ? readFileSync(appendPath, "utf8").trim() : undefined;
+  const usesProject = appendMode !== "keep-personal";
+  if (appendMode === "keep-personal") insist(project === undefined, "keep-personal fixture unexpectedly has a project append");
+  if (appendMode === "edited-workspace") insist(project && project !== neutral.trim(), "expected a distinct edited workspace append");
+  const customSkill = join(agentDir, "skills/custom/SKILL.md");
+  const hasCustomSkill = fileStat(customSkill)?.isFile() ?? false;
   const privateMarker = /\b(?:samson|darryl|godfather|mobster)\b|personal salary|(?:^|[\s"'])(?:\/home\/|\/Users\/|[a-z]:\\Users\\)/im;
   const errors = [];
   const requireEvidence = (condition, label) => { if (!condition) errors.push(label); };
@@ -124,13 +133,13 @@ async function main() {
     const { skills, diagnostics } = loader.getSkills();
     insist(loader.getAgentsFiles().agentsFiles.length === 0, `${label}: unexpected context files; use a clean disposable fixture`);
     const appendSources = loader.getAppendSystemPromptSources().map(({ path }) => ({ path, sha256: sha(readFileSync(path)) }));
-    const expectedAppend = trusted ? appendPath : (global !== undefined ? globalAppend : undefined);
+    const expectedAppend = trusted && usesProject ? appendPath : (global !== undefined ? globalAppend : undefined);
     requireEvidence(appendSources.length === Number(expectedAppend !== undefined) &&
       (!expectedAppend || appendSources[0]?.path === expectedAppend), `${label}: wrong APPEND_SYSTEM source`);
-    if (trusted) {
+    if (trusted && appendMode === "template") {
       requireEvidence(appendSources[0]?.sha256 === sha(neutral), "trusted: project append is not byte-identical to neutral template");
-      requireEvidence(!diagnostics.length, "trusted: Pi skill diagnostics (including collisions) must be empty");
     }
+    if (trusted) requireEvidence(!diagnostics.length, "trusted: Pi skill diagnostics (including collisions) must be empty");
     const modelRuntime = await ModelRuntime.create({
       credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false,
     });
@@ -142,10 +151,15 @@ async function main() {
     try {
       const systemPrompt = session.systemPrompt;
       requireEvidence(!privateMarker.test(normalized(systemPrompt)), `${label}: private marker in effective prompt`);
-      requireEvidence(systemPrompt.includes(neutral.trim()) === trusted, `${label}: neutral append not in expected effective prompt`);
-      if (global) requireEvidence(systemPrompt.includes(global) === !trusted, `${label}: incorrect user append precedence`);
+      requireEvidence(systemPrompt.includes(neutral.trim()) === (trusted && appendMode === "template"),
+        `${label}: neutral append not in expected effective prompt`);
+      if (appendMode === "edited-workspace") requireEvidence(systemPrompt.includes(project) === trusted,
+        `${label}: edited workspace append not in expected effective prompt`);
+      if (global) requireEvidence(systemPrompt.includes(global) === !(trusted && usesProject), `${label}: incorrect user append precedence`);
+      if (hasCustomSkill) requireEvidence(skills.some(({ name, filePath }) => name === "custom" && filePath === customSkill),
+        `${label}: custom user skill missing from its expected origin`);
       if (trusted) {
-        requireEvidence(skills.length === names.length, "trusted: expected only three kit skills");
+        requireEvidence(skills.length === names.length + Number(hasCustomSkill), "trusted: unexpected loaded skills");
       } else {
         requireEvidence(skills.every(({ filePath }) => !local(kit, filePath) && !local(cwd, filePath)) &&
           !systemPrompt.includes(`${kit}${sep}skills${sep}`), "denied: project skills loaded or advertised");

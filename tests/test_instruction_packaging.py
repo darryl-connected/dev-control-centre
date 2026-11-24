@@ -16,7 +16,7 @@ SKILL_CLAUSES = {
         "Keep the hub read-only: do not update the checkout, run source commands, or follow external links",
         "Shared meeting notes are not established and remain deferred", "Personal Fathom is optional",
         "A trusted project APPEND_SYSTEM shadows rather than combines with user APPEND_SYSTEM",
-        "Obtain separate explicit approval to apply and explicit acknowledgement of this precedence",
+        "Obtain explicit approval to apply, plus acknowledgement of this precedence only before creating the opt-in template",
         "Do not merge or overwrite existing settings", "Do not copy credentials, change trust, install software",
         "registration is not readiness or permission to launch", "Do not launch agents or worktrees",
         "setup makes no ClickUp request and does not check authentication", "Do not request a token in chat",
@@ -27,7 +27,7 @@ SKILL_CLAUSES = {
         "The operating developer approves launch, provider switches, scope or budget changes, external or destructive actions, and commits",
         "A ready verdict or green preflight is not launch approval", "The coordinator-invoked loop is available locally",
         "Do not launch agents or worktrees, switch providers, install dependencies, commit, push, publish or clean up",
-        "planning and review keep their established models", "No private or global factory installation is required",
+        "planning and review keep their approved models for the active job", "No private or global factory installation is required",
     ),
     "grilling": (
         "Inspect accessible sources before asking", "Cite the source answer instead of asking for information you can read",
@@ -68,6 +68,24 @@ class InstructionPackagingTest(unittest.TestCase):
         ):
             with self.subTest(clause=clause):
                 self.assertIn(clause, pi)
+
+    def test_shipped_reviewer_instructions_defer_to_configured_job_route(self) -> None:
+        # Read the coordinator, customization guide and reviewer brief together. This
+        # checks the shipped prose contract, not Pi loading or model behavior.
+        coordinator = self.resource("factory/COORDINATOR.md")
+        policy = self.resource("docs/customization.md")
+        reviewer = self.resource("factory/REVIEWER.md")
+        self.assertIn("The shipped defaults are", coordinator)
+        self.assertIn("select other exact routes and reasoning for a new job", coordinator)
+        self.assertIn("A writer and reviewer may use the same model in separate sessions and worktrees", policy)
+        self.assertNotRegex(
+            reviewer.lower(),
+            r"\b(?:openai/gpt-6\.1-sol|deepseek/deepseek-flash|never use deepseek|acceptance uses)\b",
+            "role instructions must not turn a default or brand into an acceptance requirement",
+        )
+        self.assertIn("Use the exact reviewer provider, model and reasoning frozen in the approved job", reviewer)
+        self.assertIn("A model can be shared across roles; the acceptance session and worktree must be independent", reviewer)
+        self.assertIn("does not change target repository rules or grant external access", reviewer)
 
     def test_coordinator_does_not_claim_auto_commit_authority(self) -> None:
         coordinator = self.resource("factory/COORDINATOR.md")
@@ -157,7 +175,7 @@ class InstructionPackagingTest(unittest.TestCase):
             "declared status promoted to approval": rf"\b(?:draft|maintained)(?: (?:status|label))?{status}(?:approved|signed[- ]off|deployed|ready)\b",
         }
         for path in (
-            "README.md", "docs/pi-setup.md", "docs/factory-handoff.md", "docs/knowledge-hub.md", "docs/scope.md", "AGENTS.md",
+            "README.md", "docs/pi-setup.md", "docs/customization.md", "docs/factory-handoff.md", "docs/knowledge-hub.md", "docs/scope.md", "AGENTS.md",
             "docs/clickup.md", "references/clickup-api.md",
             "factory/COORDINATOR.md", "factory/WORKER.md", "factory/REVIEWER.md",
             "references/factory-contract.md", "templates/pi/APPEND_SYSTEM.md",
@@ -172,7 +190,8 @@ class InstructionPackagingTest(unittest.TestCase):
     def test_package_relative_role_links(self) -> None:
         expected = {
             "README.md": {"docs/factory-handoff.md", "factory/COORDINATOR.md", "factory/WORKER.md", "factory/REVIEWER.md",
-                          "templates/pi/APPEND_SYSTEM.md", "docs/clickup.md", "references/clickup-api.md", "docs/task-preparation.md"},
+                          "templates/pi/APPEND_SYSTEM.md", "docs/clickup.md", "references/clickup-api.md", "docs/task-preparation.md", "docs/customization.md"},
+            "docs/customization.md": {"pi-setup.md", "../templates/dcc/policy.json"},
             "factory/COORDINATOR.md": {"WORKER.md", "REVIEWER.md", "../references/factory-contract.md", "../docs/factory-handoff.md"},
             "factory/WORKER.md": {"../docs/factory-handoff.md"},
             "docs/pi-setup.md": {"factory-handoff.md", "clickup.md", "task-preparation.md"},

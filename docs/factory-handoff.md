@@ -30,7 +30,7 @@ python -B "$KIT/scripts/factory-inbox.py" publish "$INBOX/registration.json" wri
   --report "$WRITER_REPORT" --evidence "$WRITER_EVIDENCE" --approve
 ```
 
-After the coordinator independently checks the candidate, save the existing `factory-job.py candidate` JSON as a private file. Register the reviewer attempt against it before independent review. Publish the actual reviewer receipt as the report and its corresponding evidence. The publisher derives the outcome from the receipt's `verdict` (`approved`, `changes_requested` or `blocked`). The receipt must be version 1 and carry the registered manifest and candidate digests. The transport checks these bindings, **not** the integration receipt requirements, reviewer independence, model identity or correctness.
+After the coordinator independently checks the candidate, save the existing `factory-job.py candidate` JSON as a private file. Register the reviewer attempt against it before independent review. Publish the actual reviewer receipt as the report and its corresponding evidence. The publisher derives the outcome from the receipt's `verdict` (`approved`, `changes_requested` or `blocked`). The receipt must be version 1 and carry the registered manifest and candidate digests. The transport checks these bindings, **not** the integration receipt requirements, reviewer independence, model identity or correctness. The optional runner checks the attested reviewer route and worktree against its approved dispatch; direct coordination checks them against the approved contract before applying the gate.
 
 ```sh
 python -B "$KIT/scripts/factory-job.py" candidate "$MANIFEST" --candidate "$CANDIDATE" > "$CANDIDATE_ID"

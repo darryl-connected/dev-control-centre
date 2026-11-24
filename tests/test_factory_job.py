@@ -802,8 +802,8 @@ runpy.run_path(sys.argv[0], run_name='__main__')
             return receipt
 
         cases = {
-            "acceptance review must run on Sol": mutate(
-                lambda r: r["reviewer"].__setitem__("model", "deepseek/deepseek-flash")
+            "expected an exact provider/model identity": mutate(
+                lambda r: r["reviewer"].__setitem__("model", "provider/model*")
             ),
             "review.verdict": mutate(lambda r: r.__setitem__("verdict", "needs work")),
             "must be distinct": mutate(
@@ -831,16 +831,15 @@ runpy.run_path(sys.argv[0], run_name='__main__')
             with self.subTest(reason):
                 self.assert_integration(manifest, candidate, receipt, reason)
 
-    def test_integration_rejects_reviewer_model_matching_writer(self) -> None:
+    def test_integration_allows_same_model_in_independent_worktree(self) -> None:
         candidate = self.build_candidate()
         review = self.build_review(candidate)
         manifest = self.manifest(candidate)
         receipt = self.receipt(manifest, candidate, review)
+        receipt["reviewer"]["model"] = manifest["writer"]["model"]
         self.assert_integration(manifest, candidate, receipt)
-        for label in (WRITER, "other-provider/GPT-6.2-SOL", "gpt-6.2-sol"):
-            with self.subTest(label):
-                receipt["reviewer"]["model"] = label
-                self.assert_integration(manifest, candidate, receipt, "must not be the writer's model")
+        receipt["reviewer"]["worktree"] = str(candidate)
+        self.assert_integration(manifest, candidate, receipt, "must be distinct")
 
     def test_integration_rejects_review_tree_content_drift(self) -> None:
         candidate = self.build_candidate()

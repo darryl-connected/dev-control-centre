@@ -35,7 +35,7 @@ BASELINE_TEST_MODULES = {
     "test_e2e_knowledge.py", "test_e2e_pi_setup.py", "test_e2e_prepare.py",
     "test_factory_alignment.py", "test_factory_inbox.py", "test_factory_job.py",
     "test_factory_run.py", "test_instruction_packaging.py", "test_knowledge.py",
-    "test_prepare.py", "test_setup.py", "test_validate_brief.py",
+    "test_prepare.py", "test_setup.py", "test_validate_brief.py", "test_workspace_policy.py",
 }
 
 PASSING_MODULE = '''"""Disposable fixture: records every invocation, asserts nothing else."""

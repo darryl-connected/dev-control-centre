@@ -1,6 +1,6 @@
 # Developer control centre
 
-ConnectED-first personal workspace for preparing a selected development task and coordinating its implementation through Pi + Herdr.
+ConnectED-first personal workspace for preparing a selected development task, with an optional Pi + Herdr factory. This is a starter kit. [Customize your persona, skills, integrations and workflow](docs/customization.md) without changing target-repository rules or granting external access.
 
 ## Start here (macOS)
 
@@ -8,7 +8,7 @@ Already cloned DCC? [Install Pi, sign in, and paste the starter prompt](docs/pi-
 
 ## Status
 
-This repository ships the DCC-001 offline factory foundation, A14 S1–S3 setup and the B4 coordinator-invoked factory loop. Setup prints a read-only plan and can create three workspace-local files after explicit approval and instruction-shadow acknowledgement. The loop previews an approved job, creates the isolated writer worktree/pane only after explicit launch approval, records each fixed attempt before dispatch, runs independent review in a separate worktree, routes one in-scope repair to the original writer and stages only the accepted exact candidate without committing. It does not install Pi or Herdr or distribute API keys, live sessions or global configuration.
+This repository ships the DCC-001 offline factory foundation, A14 S1–S3 setup and the B4 coordinator-invoked factory loop. Setup prints a read-only plan, preserves existing workspace settings and can register missing resources after approval. The instruction template is opt-in, with separate shadow acknowledgement. The loop previews an approved job, creates the isolated writer worktree/pane only after explicit launch approval, records each fixed attempt before dispatch, runs independent review in a separate worktree, routes eligible in-scope repairs to the original writer and stages only the accepted exact candidate without committing. It does not install Pi or Herdr or distribute API keys, live sessions or global configuration.
 
 The target workshop is 26 Nov 2026. macOS is the first product validation target; Windows is follow-up scope. The Linux SDK checks are not fresh Mac or Windows evidence. Codex and CC Switch integration are deferred.
 
@@ -16,10 +16,10 @@ The target workshop is 26 Nov 2026. macOS is the first product validation target
 
 Select one ClickUp task, inspect its PRD/meeting/code context, clarify gaps one question at a time, then review readiness. If relevant, preview and separately approve one new OpenSpec draft, validate it and review the repository artifacts. The developer must separately approve any factory launch. Implementation and independent acceptance review preserve evidence and hand off uncommitted work.
 
-- ClickUp is read-only.
+- The shipped ClickUp reader is read-only. Write integrations are not shipped; you may build your own with the appropriate access and approval.
 - Shared project meeting notes in Git take priority over supplementary personal notes when established. The shared meeting-note process is not established and remains deferred.
 - DeepSeek uses the connection setup Darryl already knows, with a separate team API key he will provide. Never put that key in this repository.
-- `deepseek/deepseek-flash` is the default implementation writer from the first attempt, using its supported reasoning default. `openai/gpt-6.1-sol` with high reasoning coordinates and independently reviews. A later writer switch is writer-only, preserves progress and requires explicit approval of a route named in the plan; it never changes the coordinator or reviewer route. Planning and review retain their established models.
+- The factory defaults to `deepseek/deepseek-flash` as writer with model-default reasoning and `openai/gpt-6.1-sol` with high reasoning as coordinator and reviewer. Choose other exact routes, reasoning or limits before preview through [workspace policy](docs/customization.md#factory-policy-for-new-jobs). A later approved writer switch preserves progress and never changes the frozen coordinator or reviewer route.
 - This personal control centre lives outside target code repositories and must respect their engineering rules.
 
 ## Standalone delivery requirements
@@ -40,7 +40,7 @@ The offline SDK probe observes actual resource loading and command expansion, no
 - [Offline factory contract](references/factory-contract.md): CLI walkthrough, manifest and receipt formats and gate limitations.
 - [Pi setup and fresh Mac checklist](docs/pi-setup.md), [neutral Pi template](templates/pi/APPEND_SYSTEM.md) and the [setup](skills/setup/SKILL.md), [factory](skills/factory/SKILL.md) and [grilling](skills/grilling/SKILL.md) skills.
 
-The scope is the 18 Nov snapshot of `projects/ConnectED/AI Workshop/developer-control-centre-v1-scope.md` from the Samson vault, including its later 18 Nov amendments and the approved B4 O18 model-policy and attempt-budget amendments recorded at its end. Its wiki-links refer to that vault, not files shipped here. Shipped SHA-256: `deaf692dd0d407c1f7606698224fc48d80cedfde48acc0c4e6d3dceee2ce89d8`.
+The scope is the 18 Nov snapshot of `projects/ConnectED/AI Workshop/developer-control-centre-v1-scope.md` from the Samson vault, including its later amendments and the approved user-owned customization amendment recorded at its end. Its wiki-links refer to that vault, not files shipped here. Shipped SHA-256: `7f763955a7bc13e805167545356e4ddb0e5b2d334c5130faf9988dfba9404364`.
 
 ## Adaptation source
 

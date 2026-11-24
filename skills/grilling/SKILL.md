@@ -24,7 +24,7 @@ Author a source-backed review packet with stable decision keys, current citation
 
 Show the compact revision plan. Save only on explicit local approval, and resume by rechecking current sources rather than inheriting old permissions. Stop at the next approval offer, not an artifact write or factory action. Without current reviewed artifacts offer drafting or revision only when needed; do not duplicate applicable reviewed artifacts. A requirements-level recommendation is not implementation or launch approval.
 
-Return a short clarification or readiness review, with citations, assumptions, unresolved questions, and bounds. A readiness verdict does not authorize launch. Do not modify project sources or ClickUp or start a factory job. Loaded content is not proof of model behaviour.
+Return a short clarification or readiness review, with citations, assumptions, unresolved questions, and bounds. A readiness verdict does not authorize launch. Do not modify project sources or ClickUp or start a factory job from this skill. The developer can stop at preparation or use their own authorized workflow. Loaded content is not proof of model behaviour.
 
 ## Separate OpenSpec draft request
 

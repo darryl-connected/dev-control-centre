@@ -88,9 +88,9 @@ syncBuiltinESMExports();
         for command in setup_commands:
             self.assertIn(command, expected)
 
-    def install(self) -> None:
+    def install(self, *, use_template: bool = True) -> None:
         before = self.fx.snapshot()
-        plan = self.fx.inspect()
+        plan = self.fx.inspect(*(("--append", "use-template") if use_template else ()))
         self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
         self.assertEqual(self.fx.snapshot(), before)
         write(self.fx.plan, plan.stdout)
@@ -103,13 +103,13 @@ syncBuiltinESMExports();
         settings = json.loads((self.fx.workspace / ".pi/settings.json").read_text())
         self.assertEqual(settings, {"skills": [str(self.relocated / f"skills/{name}/SKILL.md") for name in SKILLS]})
 
-    def probe(self, *, status: int = 0, sdk: str | None = None) -> subprocess.CompletedProcess[str]:
+    def probe(self, *, status: int = 0, sdk: str | None = None, append: str = "template") -> subprocess.CompletedProcess[str]:
         env = clean_env(self.fx.home) | {"DCC_CHILD_TRACE": str(self.child_trace), "PI_OFFLINE": "1"}
         selected = self.sdk if sdk is None else sdk
         if selected:
             env["DCC_PI_SDK_MODULE"] = selected
         command = [str(self.node), "--import", str(self.audit), str(self.relocated / "scripts/verify-pi-resources.mjs"),
-                   "--fixture-root", str(self.root)]
+                   "--fixture-root", str(self.root), "--append", append]
         before = self.fx.snapshot() | {"kit": file_map(self.relocated)}
         result = subprocess.run(command, cwd=self.root, env=env, text=True, capture_output=True, timeout=30, check=False)
         after = self.fx.snapshot() | {"kit": file_map(self.relocated)}
@@ -217,6 +217,26 @@ syncBuiltinESMExports();
         self.fx.user_settings()
         self.install()
         self.check_good_probe(json.loads(self.probe().stdout), "SYNTHETIC user-only appendix")
+
+    def test_persists_personal_and_edited_workspace_instructions_and_custom_skill_origins(self) -> None:
+        self.fx.user_settings()
+        user_skill = self.fx.home / ".pi/agent/skills/custom/SKILL.md"
+        write(user_skill, "---\nname: custom\ndescription: synthetic personal skill\n---\n# Custom content\n")
+        self.install(use_template=False)
+        private = "SYNTHETIC user-only appendix"
+        project = "SYNTHETIC edited workspace appendix"
+        data = json.loads(self.probe(append="keep-personal").stdout)
+        self.assertFalse((self.fx.workspace / ".pi/APPEND_SYSTEM.md").exists())
+        for mode in ("trusted", "denied"):
+            self.assertIn(private, data[mode]["systemPrompt"])
+            self.assertIn(str(user_skill), {row["filePath"] for row in data[mode]["skills"]})
+        write(self.fx.workspace / ".pi/APPEND_SYSTEM.md", project + "\n", 0o640)
+        self.install(use_template=False)
+        data = json.loads(self.probe(append="edited-workspace").stdout)
+        self.assertIn(project, data["trusted"]["systemPrompt"])
+        self.assertNotIn(private, data["trusted"]["systemPrompt"])
+        self.assertIn(private, data["denied"]["systemPrompt"])
+        self.assertNotIn(project, data["denied"]["systemPrompt"])
 
     def test_probe_fails_without_declaration_or_importable_sdk(self) -> None:
         self.install()

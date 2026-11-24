@@ -15,7 +15,7 @@ implementation_state: not-started
 
 Build a ConnectED developer control centre in the separate `dev-control-centre` repository, selectively adapting useful material from `ai-os-kit`. Developers use it to clarify an assigned task, retain its context and manage coding subagents through the factory. The source kit and Samson vault are development references, not required installations on developers' computers.
 
-This records scope agreed during the 18 Nov grilling session and amended later that day: Pi + Herdr is the only current route, Darryl will provide a separate team API key using the known DeepSeek setup, and the repo must ship its own factory process and neutral Pi setup. A separate local repository has a documentation-only bootstrap. No runnable setup or factory implementation exists yet. This scope is not a frozen factory brief or evidence that any integration works.
+This records scope agreed during the 18 Nov grilling session and amended later that day: Pi + Herdr is the only current route, Darryl will provide a separate team API key using the known DeepSeek setup, and the repo must ship its own factory process and neutral Pi setup. A separate local repository has a documentation-only bootstrap. No runnable setup or factory implementation exists yet. This scope is not a frozen factory brief or evidence that any integration works. Later amendments below supersede the historical delivery decisions where indicated.
 
 The workshop teaches one workflow through the kit:
 
@@ -217,3 +217,10 @@ This later approved policy correction supersedes mandatory shared/coordinator jo
 - An overall ceiling is opt-in and explicit at plan approval. When selected, initial shared use is derived from role/coordinator deltas or must be consistent with them; inconsistent aggregates are rejected and exhausted capacity refuses before role side effects.
 - Attempt or selected-overall exhaustion pauses with resumable state. No automatic restart, counter reset, safety-refusal retry, provider switch or third repair.
 - These are declared local accounting rules, not authenticated provider quotas, process watchdogs or a general isolation claim.
+
+## User-owned customization amendment (DCC-CUSTOMIZATION-01)
+
+- DCC ships a starter workflow and optional factory. Users may change their own persona, skills, integrations and workflow. The exclusions above describe what the kit ships and supports, not what users may build separately. Target repository rules and external access approvals still apply.
+- Personal Pi settings and append instructions are preserved. A new workspace append is opt-in with precedence shown and separately acknowledged. Setup reports known skill collisions and preserves custom resource files; it does not evaluate extensions or certify unknown resources.
+- The O18 model and attempt-budget values are defaults for new jobs. A developer may select exact role routes and reasoning, per-attempt allowances and repair count in a workspace policy without editing shipped code. The same model may serve in separate writer and reviewer sessions and worktrees. Freeze the effective policy per approved job; keep all spent usage and independent exact-candidate review. The runtime switch remains writer-only, explicitly approved and within the frozen bounds. There is no active-job migration.
+- These product choices do not change the process or approvals for contributing changes to DCC itself.

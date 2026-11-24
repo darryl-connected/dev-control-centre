@@ -71,12 +71,13 @@ def wait_for(predicate, label, seconds=20):
 
 
 class LoopFixture:
-    def __init__(self, test: unittest.TestCase, *, staged: bool = False):
+    def __init__(self, test: unittest.TestCase, *, staged: bool = False, kit: Path = KIT, short_socket_path: bool = True):
         self.test = test
         self.staged = staged
+        self.kit = kit
         self.root = evidence_dir("factory-run-")
         self.decoy_count = self.root / "decoy-executions.jsonl"
-        self.xdg = Path(tempfile.mkdtemp(prefix="dccr-", dir="/tmp"))
+        self.xdg = Path(tempfile.mkdtemp(prefix="dccr-", dir="/tmp" if short_socket_path else self.root))
         self.inbox = self.root / "inbox"
         self.repo = self.root / "repo"
         self.home = self.root / "home"
@@ -85,7 +86,7 @@ class LoopFixture:
         self.sessions = self.root / "sessions"
         self.workspace = self.root / "workspace"
         self.state_dir = self.root / "state"
-        self.extension = KIT / "tests/fixtures/factory-run-provider.ts"
+        self.extension = kit / "tests/fixtures/factory-run-provider.ts"
         for path in (self.inbox, self.repo, self.home, self.agent, self.agent_env, self.sessions,
                      self.workspace, self.state_dir):
             path.mkdir(mode=0o700)
@@ -158,7 +159,7 @@ class LoopFixture:
         return base
 
     def cli(self, script: str, *args: object, check: bool = False, timeout: int = 240):
-        argv = [sys.executable, "-B", str(KIT / script), *map(str, args)]
+        argv = [sys.executable, "-B", str(self.kit / script), *map(str, args)]
         result = subprocess.run(argv, cwd=self.workspace, env=self.env, capture_output=True,
                                 text=True, timeout=timeout, check=False)
         if check and result.returncode != 0:
@@ -205,14 +206,14 @@ class LoopFixture:
                  "--session", self.session_file, "--expires-ms", self.expires, "--approve", check=True)
 
     def preview(self, *extra: object, check: bool = True, manual: bool = False,
-                pi: str | Path | None = None):
+                pi: str | Path | None = None, herdr: str | Path | None = None, fixture_extension: bool = True):
         args = ["preview", self.manifest_file, "--registration", self.registration,
                 "--writer-worktree", self.writer, "--reviewer-worktree", self.reviewer,
-                "--plan-out", self.plan, "--brief", self.brief, "--herdr", HERDR_EXE, "--pi",
-                str(pi or PI_EXE),
-                "--session-dir", self.sessions, "--agent-dir", self.agent,
-                "--extension", self.extension,
+                "--plan-out", self.plan, "--brief", self.brief, "--herdr", str(herdr or HERDR_EXE), "--pi",
+                str(pi or PI_EXE), "--session-dir", self.sessions, "--agent-dir", self.agent,
                 "--pi-arg=--no-tools", "--pi-arg=--no-context-files", *extra]
+        if fixture_extension:
+            args.extend(("--extension", self.extension))
         if manual:
             args.append("--manual-fixture")
         return self.cli("scripts/factory-run.py", *args, check=check)
@@ -360,13 +361,13 @@ class LoopFixture:
     def prompt(self, role: str, attempt: str) -> str:
         return Path(self.state_row()["prompts"][f"{role}.{attempt}"]["path"]).read_text()
 
-    def publish(self, stage: str, attempt: str, outcome: str) -> None:
+    def publish(self, stage: str, attempt: str, outcome: str, *, reviewer_model: str = "openai/gpt-6.1-sol") -> None:
         report, evidence = self.root / f"{stage}.{attempt}.report", self.root / f"{stage}.{attempt}.evidence"
         if stage == "reviewer":
             candidate = json.loads((self.inbox / "candidate.json").read_text())
             receipt = {"version": 1, "manifest_digest": candidate["manifest_digest"],
                        "candidate_digest": candidate["candidate_digest"], "verdict": outcome,
-                       "reviewer": {"model": "openai/gpt-6.1-sol", "worktree": candidate["candidate"]},
+                       "reviewer": {"model": reviewer_model, "worktree": candidate["candidate"]},
                        "findings": [{"id": "F1", "severity": "low", "status": "closed",
                                      "description": "fixture finding needs repair"}],
                        "verification": [{"command": f"git -C {self.repo} rev-parse HEAD", "status": "pass",
@@ -925,8 +926,6 @@ class FactoryRunE2E(unittest.TestCase):
         self.assertFalse(r.state.exists())
 
     def test_third_switch_and_third_ordinary_repair_are_both_denied(self):
-        sys.path.insert(0, str(KIT / "scripts/lib"))
-        import factory_run as loop
         r = self.fixture()
         r.register()
         self.assertEqual(r.preview("--alternate-writer", "openai/gpt-6.2-sol",
@@ -952,7 +951,7 @@ class FactoryRunE2E(unittest.TestCase):
         after = sum(1 for row in r.requests() if row.get("role") == "writer")
         self.assertEqual(after, before + 2, "the denied third switch must not dispatch")
         state = r.state_row()
-        self.assertEqual(state["repairs"], loop.REPAIR_LIMIT)
+        self.assertEqual(state["repairs"], 2)
 
     def test_complete_third_repair_refuses_without_dispatch(self):
         r = self.fixture()
@@ -977,18 +976,20 @@ class FactoryRunE2E(unittest.TestCase):
         self.assertEqual(len(writers), 3)
         self.assertEqual(sum(1 for row in r.requests() if row.get("role") == "writer"), 3)
 
-    def test_alternate_equal_to_reviewer_is_rejected_and_routes_are_bound(self):
-        sys.path.insert(0, str(KIT / "scripts/lib"))
-        import factory_run as loop
+    def test_alternate_equal_to_reviewer_is_bound_in_its_own_writer_attempt(self):
         r = self.fixture()
         r.register()
-        refused = r.preview("--alternate-writer", "openai/gpt-6.1-sol", check=False)
-        self.assertEqual(refused.returncode, 1)
-        self.assertIn("invalid-route", refused.stderr)
-        with self.assertRaises(loop.RunError):
-            loop.validate_routes({"coordinator": loop.COORDINATOR, "writer": loop.WRITER,
-                                  "reviewer": loop.WRITER})
-        loop.validate_routes(loop.ROUTES)
+        self.assertEqual(r.preview("--alternate-writer", "openai/gpt-6.1-sol").returncode, 0)
+        r.start_herdr()
+        r.loop("launch", r.plan, "--state", r.state, "--approve", check=True)
+        r.publish("writer", "a1", "blocked")
+        r.loop("stop", r.state, "--reason", "writer-unavailable", "--role", "writer", check=True)
+        r.loop("switch-writer", r.state, "--to", "openai/gpt-6.1-sol", "--reason", "approved same model",
+               "--approve", check=True)
+        wait_for(lambda: r.dispatch_count("writer") == 2, "switched writer request missing")
+        self.assertEqual(r.session_row("writer", "a2")["model"], "openai/gpt-6.1-sol")
+        self.assertEqual(r.state_row()["routes"]["reviewer"]["model"], "gpt-6.1-sol")
+        self.assertEqual(r.requests()[-1]["model"], "gpt-6.1-sol")
 
 
 if __name__ == "__main__":

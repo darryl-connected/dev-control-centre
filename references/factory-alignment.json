@@ -15,27 +15,37 @@
     {
       "path": "README.md",
       "section": null,
-      "sha256": "124cc7daf4a15fde4adfdeaca71a391925221721c4eb84dcb6fa2293a70309ca"
+      "sha256": "120d1e41c4066c4de770ecafb57be1501e98ae85e9278c8b4a983de6afe5b6d0"
     },
     {
       "path": "docs/scope.md",
       "section": null,
-      "sha256": "deaf692dd0d407c1f7606698224fc48d80cedfde48acc0c4e6d3dceee2ce89d8"
+      "sha256": "7f763955a7bc13e805167545356e4ddb0e5b2d334c5130faf9988dfba9404364"
+    },
+    {
+      "path": "docs/customization.md",
+      "section": null,
+      "sha256": "6005078336b0779409aefe1b400f84bd8d4916a2c7440c0e46731930417e340b"
+    },
+    {
+      "path": "docs/pi-setup.md",
+      "section": null,
+      "sha256": "6fc26d48d83e3c3e78eacfada1f1f3d47966bba19fc8a1428982371921a8374a"
     },
     {
       "path": "factory/COORDINATOR.md",
       "section": null,
-      "sha256": "cc2af5ecd4f28f550f1c797208fbd4afbd73bb8ad185717b5f7427f9873b3b74"
+      "sha256": "9d27c64afe09a4213438647a3fbf6e4c3d39c5473dd36ab64b69dab0b0ec1fe0"
     },
     {
       "path": "factory/WORKER.md",
       "section": null,
-      "sha256": "dc26ce23c4c3b75fa764bd6fc2608efb45d426cc50fddfcd13e389bc59a340c3"
+      "sha256": "d1a2bf706e9c78b263f3cd3d3302bc7c1ed3eaacc97d9d7feb59a9229ee675a9"
     },
     {
       "path": "factory/REVIEWER.md",
       "section": null,
-      "sha256": "75084506f8055853a06ce6a6f20d178dacda336c5e71aaeaa2e6b963a457309d"
+      "sha256": "c7c0d077bc5dc306fd7de291ab1b496904f5dd0db02a8498dc8de833e87cc11f"
     },
     {
       "path": "requirements-dev.txt",
@@ -45,12 +55,32 @@
     {
       "path": "scripts/build.py",
       "section": null,
-      "sha256": "76aecbad1aa669b8face11b69b3de15eccad382c3798501a85dcce87a7e4b7eb"
+      "sha256": "115c32a5707b9c20102f19969852e5055108b8612e71b3335445f70b1baefb6b"
     },
     {
       "path": "scripts/lib/factory_contract.py",
       "section": null,
-      "sha256": "be340ae1537c156d665f703d276175f0dedce28b7d8554fa3739a82791459aac"
+      "sha256": "117561a9026984edf6a92e6f21a8301668a5e8cb6416915b6f38eaead2ba50ba"
+    },
+    {
+      "path": "scripts/lib/workspace_policy.py",
+      "section": null,
+      "sha256": "81be49f8146dbf62eb8cc4a5c219a8d269dc2f3053753a1ea95928e79d98c9f3"
+    },
+    {
+      "path": "scripts/lib/factory_run.py",
+      "section": null,
+      "sha256": "ae86d623c94726c75bed1f90e2d699e28d3eb9427142b104c21a46d8511f2f4a"
+    },
+    {
+      "path": "scripts/factory-run.py",
+      "section": null,
+      "sha256": "a8165c9e3e0393e00091480f8781cfdff3756ba1eeabecbc2d8039b26a491585"
+    },
+    {
+      "path": "scripts/setup.py",
+      "section": null,
+      "sha256": "5423354b39a34c35034816e96cbdc3cadfd5da4857110553e73964cf6c9b087a"
     },
     {
       "path": "scripts/factory-job.py",
@@ -70,7 +100,7 @@
     {
       "path": "tests/test_factory_job.py",
       "section": null,
-      "sha256": "1530738749682e847f91fd2fe4cad822084d6b1974d47ef4df8d72ab0ad02f22"
+      "sha256": "9fd5037c4ab8bf749c3c1c14b56420bcc51c0e38b36534f2ee48824af0254ab1"
     },
     {
       "path": "tests/test_factory_alignment.py",
@@ -85,22 +115,42 @@
     {
       "path": "tests/test_instruction_packaging.py",
       "section": null,
-      "sha256": "64ca681df0eb1962bc411a5c1c3519a4b472ceb36a05bf08ea03248811c17703"
+      "sha256": "9273fe20507c2f0c8357a0582069ce63476acb00a545d53697a57da7094537cd"
     },
     {
       "path": "tests/test_e2e_factory.py",
       "section": null,
-      "sha256": "97ffbd2739fdd8e742d3574a775f6b1d6333b89cea5524a050b77ea83269587f"
+      "sha256": "d1922175a31c0b12c7114b7789e5464d8177d70bb0449922b187ddb946fb841e"
     },
     {
       "path": "templates/pi/APPEND_SYSTEM.md",
       "section": null,
-      "sha256": "79b8d9ee20ff3a7952fc0eecdefe86f20eee29d9b66e8fd01c3208bd549da531"
+      "sha256": "c404fe703ea258256bef00c48e619864679e3bd93f3e789b9489a3499072299d"
+    },
+    {
+      "path": "templates/dcc/policy.json",
+      "section": null,
+      "sha256": "646c8bddc703707a85fa41c7157096434fc153421529f2e142d000617f6635de"
+    },
+    {
+      "path": "skills/setup/SKILL.md",
+      "section": null,
+      "sha256": "b4e65564f4dc69db9b73f39f7b0f7a9fd3ef680eb8447f2f06465f125d6e23b2"
+    },
+    {
+      "path": "skills/factory/SKILL.md",
+      "section": null,
+      "sha256": "95ae56e459d07b09fb3afe8c6d08f96776c1b54b56bef75bb4ea11076ed159a8"
+    },
+    {
+      "path": "skills/grilling/SKILL.md",
+      "section": null,
+      "sha256": "1326e8c1692d86e3771df34faa36fdc877fa9febee0ea1f17603b9fc3b3d638c"
     },
     {
       "path": "references/factory-contract.md",
       "section": null,
-      "sha256": "c77091789818dfa1ba25cba70f2e1759b97fd5e3e356858a503f8490c53aab8d"
+      "sha256": "475e1873df543ffb7b1b81f23c39998a11423abf6dd2fe764455af8345919cab"
     }
   ]
 }

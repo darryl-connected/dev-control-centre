@@ -39,7 +39,7 @@ All fields are required. Unknown fields are rejected.
 | `guards` | `[{id, decisions, command, boundary, mutation, expected_failure, limits}]` |
 | `risks`, `boundaries`, `out_of_scope`, `verification` | non-empty lists of strings; verification identifies the expected commands |
 | `evidence`, `stopping_point`, `report` | non-empty strings |
-| `budgets` | `{writer: {minutes, calls}, reviewer: {minutes, calls}}`, positive integers. The loop renders per-attempt envelopes from these values; cumulative use is reporting only unless an overall ceiling is explicitly selected. |
+| `budgets` | `{writer: {minutes, calls}, reviewer: {minutes, calls}}`, positive integers. These declare the manifest allowances; for the runner, preview and approve the exact per-attempt assignment limits from [workspace policy](../docs/customization.md#factory-policy-for-new-jobs). Cumulative use is reporting only unless an overall ceiling is explicitly selected. |
 | `writer` | `{worktree, model}`; absolute worktree path, attested model |
 | `lint_debt` | list of pre-existing warnings; empty when none |
 
@@ -75,7 +75,7 @@ The coordinator records the independent reviewer's attestation:
 }
 ```
 
-Integration rejects mismatched manifest or candidate digests, a non-approved verdict, unresolved blocking/high/critical findings, incomplete expected command records, non-passing verification, or incomplete/unsuccessful mutation attestations. The reviewer worktree must be distinct from target, candidate and writer, in the same repository, and contain the same files/modes. The acceptance model must be GPT Sol, not DeepSeek or the writer's model. Comparison uses the case-insensitive slug without the provider prefix. Use the established reviewer model specified for your job; the gate cannot authenticate model names or aliases. Each command record includes a `skipped` list; skips and limitations are NOT VERIFIED. Never approve an unverified critical requirement.
+Integration rejects mismatched manifest or candidate digests, a non-approved verdict, unresolved blocking/high/critical findings, incomplete expected command records, non-passing verification, or incomplete/unsuccessful mutation attestations. The reviewer worktree must be distinct from target, candidate and writer, in the same repository, and contain the same files/modes. The reviewer model must be an exact provider/model identity; model brands and same-model assignments are not independence checks. The standalone gate has no approved runner plan, so for direct coordination the coordinator must match it against the approved route and dispatched worktree. Runner handoff additionally requires the exact planned reviewer identity and dispatched worktree. Neither gate authenticates the model or attestation. Each command record includes a `skipped` list; skips and limitations are NOT VERIFIED. Never approve an unverified critical requirement.
 
 ## Tooling alignment
 

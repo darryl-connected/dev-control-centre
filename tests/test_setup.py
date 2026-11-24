@@ -179,8 +179,8 @@ class SetupTest(unittest.TestCase):
         self.maps.setdefault("refusals", []).append({"message": message, "before": before, "after": after})
         self.assertEqual(after, before)
 
-    def save_plan(self) -> dict:
-        result = self.fx.inspect()
+    def save_plan(self, *extra: str) -> dict:
+        result = self.fx.inspect(*extra)
         plan = self.parsed(result)
         write(self.fx.plan, result.stdout)
         return plan
@@ -191,7 +191,7 @@ class SetupTest(unittest.TestCase):
         # Pre-existing project directory and unrelated local settings sentinel.
         write(fx.workspace / ".pi/keep.txt", "leave alone", 0o640)
         self.maps["before"] = before = fx.snapshot()
-        inspected = self.save_plan()
+        inspected = self.save_plan("--append", "use-template")
         self.assertEqual(fx.snapshot(), before)
         plan = inspected["plan"]
         self.assertEqual(set(plan["actions"]), DESTINATIONS)
@@ -291,10 +291,8 @@ class SetupTest(unittest.TestCase):
         fx = self.fx
         self.save_plan()
         for relative, content, reason in (
-            (".pi/settings.json", '{"theme":"fixture"}', "conflict:"),
             (".pi/settings.json", '{"broken":}', "malformed JSON"),
             (".pi/settings.json", '{"skills":[],"skills":[]}', "malformed JSON"),
-            (".pi/APPEND_SYSTEM.md", "keep existing instructions\n", "conflict:"),
             (".dcc/workspace.json", "[]", "expected a JSON object"),
         ):
             with self.subTest(relative=relative, content=content):
@@ -343,25 +341,116 @@ class SetupTest(unittest.TestCase):
     def test_detects_existing_skill_by_name_not_directory(self) -> None:
         fx = self.fx
         self.save_plan()
-        for root in (fx.home / ".pi/agent/skills", fx.workspace / ".pi/skills", fx.root / ".agents/skills"):
+        configured = fx.home / ".pi/agent/settings.json"
+        write(configured, '{"skills":["extra-skills"]}')
+        for root in (fx.home / ".pi/agent/extra-skills", fx.home / ".pi/agent/skills", fx.workspace / ".pi/skills",
+                     fx.root / ".agents/skills"):
             with self.subTest(root=root):
                 skill = root / "other-directory/SKILL.md"
-                write(skill, "---\nname: 'factory'\ndescription: 'fixture duplicate'\n---\n# Sentinel\n")
-                self.refusal(fx.inspect(), "conflicting skill name factory", fx.snapshot())
-                self.refusal(fx.apply(*APPROVE), "conflicting skill name factory", fx.snapshot())
+                write(skill, "---\n'name': 'factory'\ndescription: 'fixture duplicate'\n---\n# Sentinel\n")
+                before = fx.snapshot()
+                plan = self.parsed(fx.inspect())["plan"]
+                self.assertIn(str(skill), plan["skills"]["factory"]["existing"])
+                self.assertEqual(plan["skills"]["factory"]["selection"], "choice-required")
+                self.assertIn("--skill-choice factory=keep", plan["skills"]["factory"]["choices"])
+                self.assertIn("--skill-choice factory=register", plan["skills"]["factory"]["choices"])
+                self.assertEqual(fx.snapshot(), before)
+                self.refusal(fx.apply(*APPROVE), "stale setup plan", before)
                 skill.unlink()
         fallback = fx.workspace / ".pi/skills/setup/SKILL.md"
         write(fallback, "---\nname: null\ndescription: 'synthetic fallback-name collision'\n---\n# Sentinel\n")
-        self.refusal(fx.inspect(), "conflicting skill name setup", fx.snapshot())
+        self.assertIn(str(fallback), self.parsed(fx.inspect())["plan"]["skills"]["setup"]["existing"])
 
-    def test_refuses_ambiguous_user_resource_configuration_without_edits(self) -> None:
+    def test_explicit_keep_existing_skill_preserves_file_and_omits_kit_registration(self) -> None:
         fx = self.fx
-        settings = fx.home / ".pi/agent/settings.json"
-        for content, reason in (("{", "malformed JSON"), ('{"packages":["not-installed"]}', "cannot rule out"),
-                                ('{"skills":["somewhere"]}', "cannot rule out")):
-            with self.subTest(content=content):
-                write(settings, content)
-                self.refusal(fx.inspect(), reason, fx.snapshot())
+        skill = fx.home / ".pi/agent/skills/not-factory/SKILL.md"
+        write(skill, "---\nname: factory\ndescription: synthetic\n---\nPersonal factory\n", 0o640)
+        before = fx.snapshot()
+        plan = self.save_plan("--skill-choice", "factory=register")["plan"]
+        self.assertEqual(plan["skills"]["factory"]["selection"], "manual-collision-resolution")
+        self.refusal(fx.apply("--approve"), "disable the listed resources in their Pi scope", before)
+        plan = self.save_plan("--skill-choice", "factory=keep")["plan"]
+        self.assertEqual(plan["skills"]["factory"]["existing"], {str(skill): "user"})
+        self.assertEqual(plan["skills"]["factory"]["selection"], "keep-existing")
+        self.parsed(fx.apply("--approve"))
+        self.assertEqual(json.loads((fx.workspace / ".pi/settings.json").read_text())["skills"],
+                         [str(KIT / f"skills/{name}/SKILL.md") for name in ("setup", "grilling")])
+        after = fx.snapshot()
+        self.assertEqual({key: after[key] for key in before if key != "workspace"},
+                         {key: before[key] for key in before if key != "workspace"})
+        self.maps.update(keep_before=before, keep_after=after)
+
+    def test_explicit_register_kit_skill_excludes_project_collision_without_deleting_file(self) -> None:
+        fx = self.fx
+        skill = fx.workspace / ".pi/skills/other-name/SKILL.md"
+        write(skill, "---\nname: factory\ndescription: synthetic\n---\nWorkspace factory\n", 0o640)
+        before = fx.snapshot()
+        self.save_plan()
+        self.refusal(fx.apply("--approve"), "conflicting skill name factory", before)
+        plan = self.save_plan("--skill-choice", "factory=register")["plan"]
+        self.assertEqual(plan["skills"]["factory"]["existing"], {str(skill): "workspace"})
+        self.assertEqual(plan["skills"]["factory"]["selection"], "register")
+        self.parsed(fx.apply("--approve"))
+        settings = json.loads((fx.workspace / ".pi/settings.json").read_text())["skills"]
+        self.assertEqual(settings, [str(KIT / "skills/setup/SKILL.md"), str(KIT / "skills/factory/SKILL.md"),
+                                    f"-{skill}", str(KIT / "skills/grilling/SKILL.md")])
+        after = fx.snapshot()
+        self.assertEqual({key: after[key] for key in before if key != "workspace"},
+                         {key: before[key] for key in before if key != "workspace"})
+        self.assertEqual({key: after["workspace"][key] for key in before["workspace"]}, before["workspace"])
+        self.assertEqual(self.parsed(fx.inspect(with_repos=False))["plan"]["skills"]["factory"]["selection"],
+                         "already-registered")
+        self.maps.update(register_before=before, register_after=after)
+
+    def test_custom_resources_preserved_without_template(self) -> None:
+        fx = self.fx
+        fx.user_settings()
+        agent = fx.home / ".pi/agent"
+        marker = fx.workspace / "extension-executed"
+        extension = agent / "extensions/sentinel.mjs"
+        write(extension, f"import {{writeFileSync}} from 'node:fs';\nwriteFileSync({json.dumps(str(marker))}, 'executed');\n")
+        write(agent / "settings.json", '{"theme":"mine","skills":["custom"],"packages":["unknown"],"extensions":["extensions/sentinel.mjs"]}\n', 0o640)
+        write(agent / "custom/a/SKILL.md", "---\nname: custom\ndescription: fixture\n---\nUnrelated custom skill\n")
+        write(agent / "custom/unknown/SKILL.md", "---\n{ name: unknown, description: unparsed }\n---\nAdvisory only\n")
+        write(fx.workspace / ".pi/settings.json", '{"theme":"workspace","packages":["elsewhere"]}\n', 0o644)
+        before = fx.snapshot()
+        plan = self.save_plan()["plan"]
+        self.assertFalse(marker.exists(), "inspection evaluated a custom extension")
+        self.assertEqual(fx.snapshot(), before)
+        self.assertEqual(plan["append"]["trusted"], str(agent / "APPEND_SYSTEM.md"))
+        self.assertEqual(plan["append"]["untrusted"], str(agent / "APPEND_SYSTEM.md"))
+        self.assertNotIn(".pi/APPEND_SYSTEM.md", plan["actions"])
+        self.assertTrue(any("were not evaluated" in note for note in plan["advisories"]))
+        self.assertTrue(any("unrecognized skill frontmatter" in note for note in plan["advisories"]))
+        self.parsed(fx.apply("--approve"))
+        self.assertFalse(marker.exists(), "apply evaluated a custom extension")
+        self.assertFalse((fx.workspace / ".pi/APPEND_SYSTEM.md").exists())
+        after = fx.snapshot()
+        self.assertEqual(set(after["workspace"]) - set(before["workspace"]), {".dcc", ".dcc/workspace.json"})
+        self.assertEqual({key: after[key] for key in before if key != "workspace"},
+                         {key: before[key] for key in before if key != "workspace"})
+        self.assertEqual({key: after["workspace"][key] for key in before["workspace"]}, before["workspace"])
+        project = fx.workspace / ".pi/APPEND_SYSTEM.md"
+        write(project, "Edited workspace append sentinel\n", 0o640)
+        custom = fx.snapshot()
+        prior = self.save_plan("--append", "use-template")["plan"]
+        self.assertIn("is custom", prior["blockers"][0])
+        self.refusal(fx.apply(*APPROVE), "is custom", custom)
+        again = self.parsed(fx.inspect(with_repos=False))["plan"]
+        self.assertEqual(again["append"]["trusted"], str(project))
+        self.assertEqual(again["actions"][".pi/APPEND_SYSTEM.md"]["action"], "unchanged")
+        self.assertEqual(fx.snapshot(), custom)
+        self.maps.update(custom_before=before, custom_after=after, reinspection=custom)
+
+    def test_mapping_only_does_not_require_factory_or_template(self) -> None:
+        before = self.fx.snapshot()
+        self.assertEqual(set(self.save_plan("--no-skills")["plan"]["actions"]), {".dcc/workspace.json"})
+        self.parsed(self.fx.apply("--approve"))
+        after = self.fx.snapshot()
+        self.assertEqual(set(after["workspace"]), {".dcc", ".dcc/workspace.json"})
+        self.assertEqual({key: after[key] for key in before if key != "workspace"},
+                         {key: before[key] for key in before if key != "workspace"})
+        self.maps.update(mapping_before=before, mapping_after=after)
 
     def test_workspace_cannot_be_target_or_kit(self) -> None:
         fx = self.fx

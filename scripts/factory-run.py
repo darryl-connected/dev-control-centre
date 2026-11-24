@@ -36,22 +36,15 @@ def command_preview(args: argparse.Namespace) -> int:
         repair_writer_limit=args.repair_writer_limit, rereview_limit=args.rereview_limit,
         overall_limit=args.overall_limit, used_shared=args.used_shared, used_writer=args.used_writer,
         used_reviewer=args.used_reviewer, used_coordinator=args.used_coordinator,
-        manual_fixture=args.manual_fixture)
+        manual_fixture=args.manual_fixture, workspace=args.workspace)
     emit({"status": "previewed", "activates_nothing": True, "plan": plan})
     return 0
 
 
 def verify_plan(plan_path: Path) -> dict:
-    plan = loop.read_json(plan_path, "invalid-plan")
-    digest = plan.pop("plan_digest", None)
-    if not digest or digest != contract.sha256_bytes((contract.canonical_json(plan)).encode()):
-        raise loop.RunError("stale-plan", "plan bytes do not match the approved digest")
-    plan["plan_digest"] = digest
-    if plan.get("policy") != loop.POLICY:
-        raise loop.RunError("stale-plan", "legacy budget policy plan; re-preview this job with explicit consent")
+    plan = loop.read_bound_plan(plan_path)
     if any(loop.identity_override(arg) for arg in plan.get("tools", {}).get("pi_args", [])):
         raise loop.RunError("invalid-route", "pi arguments cannot override the approved role provider, model or reasoning identity")
-    loop.validate_routes(plan["routes"])
     tools = plan.get("tools")
     if not isinstance(tools, dict):
         raise loop.RunError("stale-plan", "plan tools are malformed")
@@ -60,6 +53,8 @@ def verify_plan(plan_path: Path) -> dict:
     manifest = loop.load_manifest(plan["manifest"])
     if contract.manifest_digest(manifest) != plan["manifest_digest"]:
         raise loop.RunError("stale-plan", "manifest changed since preview")
+    if manifest["writer"] != {"model": loop.route_text(plan["routes"]["writer"]), "worktree": plan["worktrees"]["writer"]}:
+        raise loop.RunError("invalid-route", "planned writer model/worktree does not match the manifest")
     brief = Path(plan["brief"])
     if not brief.is_file() or loop.digest_file(brief) != plan["brief_sha256"]:
         raise loop.RunError("stale-plan", "rendered brief changed since preview")
@@ -89,25 +84,21 @@ def command_launch(args: argparse.Namespace) -> int:
     if state_path.exists():
         raise loop.RunError("record-exists", "this plan already has loop state")
     manifest = loop.load_manifest(plan["manifest"])
-    early = {"version": 1, "task": plan["task"], "goal": plan["goal"], "manifest": plan["manifest"],
-             "manifest_digest": plan["manifest_digest"], "repo": plan["repo"], "base": plan["base"],
-             "plan_digest": plan["plan_digest"], "listener": plan["listener"], "routes": plan["routes"],
-             "writer_route": plan["routes"]["writer"], "writer_alternates": plan["writer_alternates"],
-             "worktrees": plan["worktrees"], "budgets": plan["budgets"], "policy": plan["policy"],
-             "attempt_limits": plan["attempt_limits"], "overall_limit": plan["overall_limit"],
-             "brief": plan["brief"], "brief_sha256": plan["brief_sha256"],
-             "manual_fixture": plan.get("manual_fixture", False), "tools": plan["tools"],
-             "state_dir": str(state_path.parent), "state_file": str(state_path), "herdr_session": plan["herdr_session"],
+    state = {**plan, "plan_file": str(plan_path), "writer_route": plan["routes"]["writer"],
+             "state_dir": str(state_path.parent), "state_file": str(state_path),
              "usage": {name: dict(value) for name, value in plan["initial_usage"].items()},
              "attempt_allocations": {}, "attempt_usage": {}, "attempt_kinds": {},
              "attempts": [], "events": [], "repairs": 0, "phase": "pre-dispatch"}
     try:
-        loop.allocate_attempt(early, "writer", "a1", "initial")
-        loop.require_dispatch_allowance(early, "writer", "a1")
+        loop.allocate_attempt(state, "writer", "a1", "initial")
+        loop.require_dispatch_allowance(state, "writer", "a1")
     except loop.RunError:
-        early["phase"] = "stopped"
-        loop.save_state(state_path, early)
+        state["phase"] = "stopped"
+        loop.save_state(state_path, state)
         raise
+    declared = plan["routes"] | {f"alternate writer {identity}": loop.parse_route(identity, role="writer")
+                                 for identity in plan["writer_alternates"]}
+    loop.require_available(plan["tools"], declared, cwd=state_path.parent)
     writer = Path(plan["worktrees"]["writer"])
     branch = "dcc-" + loop.SLUG_RE.sub("-", plan["task"].lower()).strip("-")[:24] + "-writer"
     try:
@@ -118,22 +109,7 @@ def command_launch(args: argparse.Namespace) -> int:
         loop.materialize_baseline(manifest, writer)
     except loop.RunError as exc:
         raise loop.RunError("worktree-refused", exc.detail) from exc
-    state: dict = {
-        "version": 1, "task": plan["task"], "goal": plan["goal"], "manifest": plan["manifest"],
-        "manifest_digest": plan["manifest_digest"], "repo": plan["repo"], "base": plan["base"],
-        "plan_digest": plan["plan_digest"], "listener": plan["listener"], "routes": plan["routes"],
-        "writer_route": plan["routes"]["writer"], "writer_alternates": plan["writer_alternates"],
-        "worktrees": plan["worktrees"], "budgets": plan["budgets"], "policy": plan["policy"],
-        "attempt_limits": plan["attempt_limits"], "overall_limit": plan["overall_limit"],
-        "brief": plan["brief"], "brief_sha256": plan["brief_sha256"],
-        "manual_fixture": plan.get("manual_fixture", False), "tools": plan["tools"],
-        "state_dir": str(state_path.parent), "state_file": str(state_path), "herdr_session": plan["herdr_session"],
-        "approved_at": loop.now(), "approved": True, "phase": "launching", "attempts": [],
-        "usage": {name: dict(value) for name, value in plan["initial_usage"].items()},
-        "attempt_allocations": early["attempt_allocations"],
-        "attempt_usage": early["attempt_usage"], "attempt_kinds": early["attempt_kinds"],
-        "events": early["events"], "repairs": 0,
-    }
+    state.update(approved_at=loop.now(), approved=True, phase="launching")
     loop.event(state, "launch-approved", plan_digest=plan["plan_digest"],
                writer=loop.route_text(plan["routes"]["writer"]),
                coordinator=loop.route_text(plan["routes"]["coordinator"]),
@@ -155,11 +131,11 @@ def command_launch(args: argparse.Namespace) -> int:
     loop.event(state, "workspace-created", workspace=workspace, pane=pane)
     try:
         loop.require_dispatch_allowance(state, "writer", "a1")
+        loop.register_attempt(state, "writer", "a1", "initial")
+        loop.safe_dispatch(state, "writer", "a1", "", str(writer))
     except loop.RunError:
         loop.save_state(state_path, state)
         raise
-    loop.register_attempt(state, "writer", "a1", "initial")
-    loop.safe_dispatch(state, "writer", "a1", "", str(writer))
     loop.save_state(state_path, state)
     emit({"status": "writer-dispatched", "attempt": "a1", "workspace": workspace, "pane": pane,
           "worktree": str(writer), "writer": loop.route_text(state["writer_route"]),
@@ -208,6 +184,7 @@ def build_parser() -> Parser:
     preview.add_argument("--session-dir", required=True)
     preview.add_argument("--agent-dir", required=True)
     preview.add_argument("--brief", required=True)
+    preview.add_argument("--workspace", help="absolute workspace containing optional .dcc/policy.json (default: current directory)")
     preview.add_argument("--writer-attempt-limit", default="")
     preview.add_argument("--reviewer-attempt-limit", default="")
     preview.add_argument("--repair-writer-limit", default="")
