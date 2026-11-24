@@ -35,7 +35,7 @@
     {
       "path": "factory/COORDINATOR.md",
       "section": null,
-      "sha256": "9d27c64afe09a4213438647a3fbf6e4c3d39c5473dd36ab64b69dab0b0ec1fe0"
+      "sha256": "ed99a0f4aa99371e63e37dfbbf225533440baf09f1bb6c2123b6bcb9cce89efe"
     },
     {
       "path": "factory/WORKER.md",
@@ -140,7 +140,7 @@
     {
       "path": "skills/factory/SKILL.md",
       "section": null,
-      "sha256": "d95f036984a85c8eb6404b0c683ef7d847decdd1909d8d93b7372b98e25475f9"
+      "sha256": "c71b8ad6db3be17fe6c7345979b22939f1def403acc602043b835baa908d7925"
     },
     {
       "path": "skills/grilling/SKILL.md",
