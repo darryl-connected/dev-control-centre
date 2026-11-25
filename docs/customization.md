@@ -14,7 +14,22 @@ Setup doesn't evaluate extensions, install packages, resolve their dynamically s
 
 For the optional runner, copy the [credential-free example](../templates/dcc/policy.json) to your workspace's `.dcc/policy.json`, or omit it to use the shipped defaults. Specify that workspace with `factory-run.py preview --workspace /physical/workspace`, or run preview from it. Only `version: 1` is required; omitted role entries, allowance entries and repair limit use their defaults. Each overridden route supplies `provider`, `model` and `reasoning` together. Use exact Pi IDs, including case and any model namespace. Do not use aliases, fuzzy patterns or API keys. Reasoning accepts `model-default` (no Pi flag), `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`; choose a level supported by your Pi version and model. A writer and reviewer may use the same model in separate sessions and worktrees. They must not be the same session or worktree.
 
-The defaults are DeepSeek Flash with model-default for the writer, and `openai/gpt-6.1-sol` with high reasoning for the coordinator and reviewer. Initial writer and reviewer get 60 calls/25 active minutes each, repair writer 30/15, re-review 40/20, with at most two repairs. Supply positive integer `calls` and `minutes` for each overridden attempt kind. `repair_limit` is a nonnegative integer, including zero to forbid repairs. An approved writer switch uses one repair allowance. The optional CLI attempt limits narrow the workspace values for just that job. Cumulative usage is reported; `--overall-limit CALLS:MINUTES` is a separate opt-in ceiling.
+The recommended defaults are DeepSeek Flash with model-default for the writer, and `openai/gpt-6.1-sol` with high reasoning for the coordinator and reviewer. Brand, role model diversity and 1M reviewer context are not requirements. For example, if your Pi inventory contains `local-lab/Planner` and `local-lab/Builder`, a new job can select:
+
+```json
+{
+  "version": 1,
+  "routes": {
+    "coordinator": {"provider": "local-lab", "model": "Planner", "reasoning": "high"},
+    "writer": {"provider": "local-lab", "model": "Builder", "reasoning": "model-default"},
+    "reviewer": {"provider": "local-lab", "model": "Builder", "reasoning": "model-default"}
+  }
+}
+```
+
+These are illustrative IDs, not bundled models. Use an exact installed route and reasoning for each role and make the manifest writer match. Review in a separate session and worktree even with the same model. Smaller or unknown context alone does not block selection; advertised context does not establish backend capacity. Do not use this edit to change roles or reset spending for an already approved job.
+
+Initial writer and reviewer get 60 calls/25 active minutes each, repair writer 30/15, re-review 40/20, with at most two repairs. Supply positive integer `calls` and `minutes` for each overridden attempt kind. `repair_limit` is a nonnegative integer, including zero to forbid repairs. An approved writer switch uses one repair allowance. The optional CLI attempt limits narrow the workspace values for just that job. Cumulative usage is reported; `--overall-limit CALLS:MINUTES` is a separate opt-in ceiling.
 
 Set the manifest writer to the exact selected writer identity and worktree. Review the resolved policy, digest, exact identities, reasoning and limits in the preview before approving it. The runner records the coordinator route but does not launch or change the coordinator session; the developer verifies that session matches the selection. On approved launch, the runner checks the exact models in the approved Pi executable's offline inventory with the selected agent directory and any explicitly approved provider extension. It does not check authentication by making a provider request or prove that every effort level is effective. Check the actual session identities and thinking before relying on a role. No credentials belong in the policy, CLI arguments or evidence.
 

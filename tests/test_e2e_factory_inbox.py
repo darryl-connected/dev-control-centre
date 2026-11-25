@@ -236,11 +236,14 @@ class PiFixture(Records):
         time.sleep(OBSERVATION_SECONDS)
         self.test.assertEqual((len(self.notices()), len(self.requests())), (i, i), reason)
 
+    def execution_prefix(self):
+        return ["unshare", "-Urn", "--", *self.launcher]
+
     def start_args(self):
         exe = os.environ.get("DCC_PI_EXECUTABLE")
         if not exe or not os.path.isabs(exe):
             raise AssertionError("absolute DCC_PI_EXECUTABLE is required for the actual TUI check")
-        return ["unshare", "-Urn", "--", *self.launcher, exe, "--offline", "--no-extensions", "--no-tools",
+        return [*self.execution_prefix(), exe, "--offline", "--no-extensions", "--no-tools",
                 "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve",
                 "--tui-mode", "regular", "--model", "dcc-offline-fixture/deterministic", "--session-dir", str(self.sessions),
                 "-e", str(self.kit / "tests/fixtures/factory-inbox-provider.ts"), "-e", str(self.kit / "extensions/factory-inbox.ts")]

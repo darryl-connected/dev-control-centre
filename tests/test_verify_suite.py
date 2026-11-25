@@ -1,14 +1,8 @@
-"""Real subprocess tests for scripts/verify-suite.py at the CLI/discovery boundary.
-
-Each fixture package is a disposable copy of the CLI plus small test modules that
-record every import-to-run invocation. The fixtures prove the shipping command
-checks prerequisites in the same interpreter and environment before discovery,
-runs the suite once, keeps the packaged suite relative to the command and passes
-the child status through. They do not prove real test behaviour.
-"""
+"""Real verifier subprocesses with import and execution markers in a disposable kit."""
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -18,220 +12,205 @@ from pathlib import Path
 
 from test_factory_job import clean_env
 
-PACKAGE = Path(__file__).resolve().parent.parent
-CLI = PACKAGE / "scripts" / "verify-suite.py"
-REQUIRED_VARIABLES = (
-    "DCC_PI_EXECUTABLE",
-    "DCC_HERDR_EXECUTABLE",
-    "DCC_PI_SDK_MODULE",
-    "DCC_B3_NODE",
-    "DCC_B3_OPENSPEC",
-)
-CANARY = "synthetic-canary-token-not-for-output"
-# Fixed at the approved base commit: the new guard may only add test modules.
-BASELINE_TEST_MODULES = {
-    "test_clickup.py", "test_draft.py", "test_e2e_clickup.py", "test_e2e_draft.py",
-    "test_e2e_factory.py", "test_e2e_factory_inbox.py", "test_e2e_factory_run.py",
-    "test_e2e_knowledge.py", "test_e2e_pi_setup.py", "test_e2e_prepare.py",
-    "test_factory_alignment.py", "test_factory_inbox.py", "test_factory_job.py",
-    "test_factory_run.py", "test_instruction_packaging.py", "test_knowledge.py",
-    "test_prepare.py", "test_setup.py", "test_validate_brief.py", "test_workspace_policy.py",
-}
-
-PASSING_MODULE = '''"""Disposable fixture: records every invocation, asserts nothing else."""
-import os
-import sys
-import unittest
+ROOT = Path(__file__).resolve().parents[1]
+FILE_TOOLS = ("DCC_PI_EXECUTABLE", "DCC_HERDR_EXECUTABLE", "DCC_PI_SDK_MODULE", "DCC_B3_NODE", "DCC_B3_OPENSPEC")
+CANARY = "synthetic-env-canary-not-for-output"
+MARKER = '''import json, os, sys, unittest
 from pathlib import Path
 
 
-class {name}(unittest.TestCase):
-    def test_{name}_runs_once(self) -> None:
-        record = Path(os.environ["DCC_TEST_VERIFY_RECORD"])
-        with record.open("a", encoding="utf-8") as handle:
-            handle.write(
-                "|".join((Path(__file__).resolve().as_posix(), sys.executable,
-                          os.environ.get("DCC_TEST_VERIFY_CANARY", ""))) + "\\n"
-            )
-'''
-
-FAILING_MODULE = '''"""Disposable fixture: fails after recording its single invocation."""
-import os
-import unittest
-from pathlib import Path
+def record(kind):
+    with Path(os.environ['MARKER_TRACE']).open('a') as out:
+        out.write(json.dumps([kind, __name__, __file__, sys.executable, os.environ.get('MARKER_CANARY')]) + '\\n')
 
 
-class Failure(unittest.TestCase):
-    def test_fails(self) -> None:
-        Path(os.environ["DCC_TEST_VERIFY_RECORD"]).write_text("ran\\n", encoding="utf-8")
-        self.fail("fixture failure")
+record('import')
+
+
+class Marker(unittest.TestCase):
+    def test_once(self):
+        record('run')
+        if os.environ.get('MARKER_FAIL') == __name__:
+            self.fail('fixture failed deliberately')
 '''
 
 
 class SuiteFixture:
-    """Disposable relocated package: CLI, fixture tests, record file and empty home."""
-
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, platform: str = 'darwin', kernel_problem: str | None = None):
         self.root = root
-        scripts = root / "scripts"
-        scripts.mkdir(parents=True)
-        self.cli = scripts / "verify-suite.py"
-        shutil.copyfile(CLI, self.cli)
-        self.cli.chmod(0o755)
-        self.tests = root / "tests"
-        self.tests.mkdir()
-        self.record = root / "invocations.txt"
-        self.cwd = root / "unrelated cwd"
-        self.cwd.mkdir()
-        self.home = root / "empty home"
-        self.home.mkdir()
+        self.tests = root / 'tests'
+        self.cwd = root / 'unrelated cwd'
+        self.home = root / 'empty home'
+        self.bin = root / 'bin'
+        self.tmp = root / 'tmp'
+        self.agent = root / 'agent'
+        self.sessions = root / 'sessions'
+        self.xdg = root / 'xdg'
+        lib = root / 'scripts/lib'
+        for name in (self.tests, self.cwd, self.home, self.bin, self.tmp, self.agent, self.sessions, self.xdg, lib):
+            name.mkdir(parents=True)
+        self.cli = root / 'scripts/verify-suite.py'
+        shutil.copyfile(ROOT / 'scripts/verify-suite.py', self.cli)
+        profiles = (ROOT / 'scripts/lib/verification_profiles.py').read_text()
+        # In the copy only, install a tiny inventory and model the host kernel.
+        # The production CLI/selection/child/namespace code is unchanged.
+        overrides = f'''
+sys.platform = {platform!r}
+PROFILE_SUITES = {{NATIVE: ('test_native_marker',), LINUX_SECURITY: ('test_linux_marker',)}}
+PROFILE_RESOURCES = ()
 
-    def add_test(self, module: str, source: str) -> None:
-        (self.tests / module).write_text(source, encoding="utf-8")
 
-    def complete_environment(self) -> dict[str, str]:
-        tools = self.root / "tools"
-        tools.mkdir(exist_ok=True)
-        values: dict[str, str] = {}
-        for name, executable in (
-            ("DCC_PI_EXECUTABLE", True),
-            ("DCC_HERDR_EXECUTABLE", True),
-            ("DCC_PI_SDK_MODULE", False),
-            ("DCC_B3_NODE", True),
-            ("DCC_B3_OPENSPEC", False),
-        ):
-            path = tools / f"{name.lower()}{'.bin' if executable else '.js'}"
-            path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-            path.chmod(0o755 if executable else 0o644)
-            values[name] = str(path)
-        return values
+def linux_kernel_checks():
+    return [('/proc', None), ('inotify', None), ('Landlock', {kernel_problem!r})]
 
-    def environment(self, **overrides: str | None) -> dict[str, str]:
+
+'''
+        boundary = 'if __name__ == "__main__":'
+        assert profiles.count(boundary) == 1
+        (lib / 'verification_profiles.py').write_text(profiles.replace(boundary, overrides + boundary))
+        self.add_test('test_native_marker')
+        self.add_test('test_linux_marker')
+        self.trace = root / 'marker.jsonl'
+        self.namespace = root / 'namespace.txt'
+        self.tools = {key: str(self.bin / key) for key in FILE_TOOLS}
+        for key, value in self.tools.items():
+            self.executable(Path(value), '#!/bin/sh\nexit 0\n', 0o644 if key in ('DCC_PI_SDK_MODULE', 'DCC_B3_OPENSPEC') else 0o755)
+        for name in ('git', 'node'):
+            self.executable(self.bin / name, '#!/bin/sh\nexit 0\n')
+
+    def add_test(self, name):
+        (self.tests / f'{name}.py').write_text(MARKER)
+
+    def executable(self, path, content, mode=0o755):
+        path.write_text(content)
+        path.chmod(mode)
+
+    def unshare(self, exit_code):
+        self.executable(self.bin / 'unshare', '#!/bin/sh\nprintf "%s\\n" "$*" > "$NAMESPACE_MARKER"\n'
+                        f'exit {exit_code}\n')
+
+    def run(self, *args, complete=True, **overrides):
         env = clean_env(self.home) | {
-            "DCC_TEST_VERIFY_RECORD": str(self.record),
-            "DCC_TEST_VERIFY_CANARY": CANARY,
-            "CLICKUP_TOKEN": CANARY,
+            'PATH': str(self.bin), 'TMPDIR': str(self.tmp), 'PI_CODING_AGENT_DIR': str(self.agent),
+            'PI_CODING_AGENT_SESSION_DIR': str(self.sessions), 'XDG_CONFIG_HOME': str(self.xdg),
+            'MARKER_TRACE': str(self.trace), 'NAMESPACE_MARKER': str(self.namespace), 'MARKER_CANARY': CANARY,
         }
-        for key, value in overrides.items():
-            if value is None:
-                env.pop(key, None)
-            else:
-                env[key] = value
-        return env
+        if complete:
+            env.update(self.tools)
+        return subprocess.run([sys.executable, '-B', str(self.cli), *args], cwd=self.cwd, env=env | overrides,
+                              capture_output=True, text=True, timeout=30, check=False)
 
-    def run(self, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [sys.executable, "-B", str(self.cli), *args],
-            cwd=str(self.cwd), env=env, capture_output=True, text=True, check=False, timeout=120,
-        )
-
-    def records(self) -> list[list[str]]:
-        if not self.record.exists():
-            return []
-        return [line.split("|") for line in self.record.read_text(encoding="utf-8").splitlines()]
+    def records(self):
+        return [json.loads(line) for line in self.trace.read_text().splitlines()] if self.trace.exists() else []
 
 
-class PrerequisiteBoundaryTest(unittest.TestCase):
-    def setUp(self) -> None:
-        temp = tempfile.TemporaryDirectory(prefix="dcc-verify-suite-")
+class VerifierBoundaryTest(unittest.TestCase):
+    def fixture(self, **kwargs):
+        temp = tempfile.TemporaryDirectory(prefix='dcc-verifier-fixture-')
         self.addCleanup(temp.cleanup)
-        self.fx = SuiteFixture(Path(temp.name))
-        self.fx.add_test("test_marker_a.py", PASSING_MODULE.format(name="MarkerA"))
+        return SuiteFixture(Path(temp.name).resolve(), **kwargs)
 
-    def test_missing_prerequisites_stop_before_any_discovery(self) -> None:
-        result = self.fx.run(self.fx.environment())
-        output = result.stdout + result.stderr
-        self.assertEqual(result.returncode, 2, output)
-        self.assertEqual(self.fx.records(), [], "the suite reached a test module")
-        self.assertIn("no test was discovered, imported or started", result.stderr)
-        for name in REQUIRED_VARIABLES:
-            self.assertEqual(result.stderr.count(f"FAIL  {name}:"), 1, result.stderr)
-        self.assertNotIn(CANARY, output, "the command printed an environment value")
-        self.assertFalse(any(self.fx.tests.rglob("__pycache__")), "importing happened")
-
-    def test_invalid_paths_are_reported_together_before_discovery(self) -> None:
-        tools = self.fx.root / "tools"
-        tools.mkdir()
-        non_executable = tools / "not-executable"
-        non_executable.write_text("#!/bin/sh\n", encoding="utf-8")
-        non_executable.chmod(0o644)
-        a_directory = tools / "directory"
-        a_directory.mkdir()
-        result = self.fx.run(self.fx.environment(
-            DCC_PI_EXECUTABLE=str(non_executable),
-            DCC_HERDR_EXECUTABLE=str(tools / "missing-herdr"),
-            DCC_PI_SDK_MODULE=str(a_directory),
-            DCC_B3_NODE="relative/node",
-            DCC_B3_OPENSPEC="",
-        ))
+    def stopped(self, fixture, result):
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-        self.assertEqual(self.fx.records(), [])
-        for name in REQUIRED_VARIABLES:
-            self.assertEqual(result.stderr.count(f"FAIL  {name}:"), 1, result.stderr)
-        self.assertIn("not executable", result.stderr)
-        self.assertIn("does not name an existing file", result.stderr)
-        self.assertIn("is not an absolute path", result.stderr)
-        self.assertIn("is not set", result.stderr)
+        self.assertIn('no test was discovered, imported or started', result.stderr)
+        self.assertEqual(fixture.records(), [])
         self.assertNotIn(CANARY, result.stdout + result.stderr)
 
-    def test_check_mode_never_runs_discovery(self) -> None:
-        complete = self.fx.run(self.fx.environment(**self.fx.complete_environment()), "--check")
-        self.assertEqual(complete.returncode, 0, complete.stdout + complete.stderr)
-        self.assertIn("PASS  DCC_PI_EXECUTABLE", complete.stdout)
-        self.assertIn("prerequisite check only", complete.stdout)
-        self.assertEqual(self.fx.records(), [], "--check discovered a test")
-        bare = self.fx.run(self.fx.environment(), "--check")
-        self.assertEqual(bare.returncode, 2, bare.stdout + bare.stderr)
-        self.assertEqual(self.fx.records(), [], "--check discovered a test")
+    def selection(self, fixture, result, selected, excluded):
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f'SELECTED  {selected}', result.stdout)
+        self.assertRegex(result.stdout, rf'NOT VERIFIED \([^)]* excluded\)  {excluded}')
+        self.assertNotIn('full suite', result.stdout.lower())
+        self.assertEqual(fixture.records(), [[phase, selected, str(fixture.tests / f'{selected}.py'), sys.executable, CANARY]
+                                             for phase in ('import', 'run')])
+        self.assertEqual(list(fixture.cwd.iterdir()), [])
 
+    def test_native_runs_from_relocated_package_without_linux_tools(self):
+        f = self.fixture()
+        self.assertFalse((f.bin / 'unshare').exists())
+        self.selection(f, f.run(), 'test_native_marker', 'test_linux_marker')
+        self.assertFalse(f.namespace.exists())
 
-class SuiteInvocationTest(unittest.TestCase):
-    def setUp(self) -> None:
-        temp = tempfile.TemporaryDirectory(prefix="dcc-verify-suite-")
-        self.addCleanup(temp.cleanup)
-        self.fx = SuiteFixture(Path(temp.name))
+    def test_invalid_profile_never_imports(self):
+        f = self.fixture()
+        result = f.run('--profile', 'all')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('invalid choice', result.stderr)
+        self.assertIn('native', result.stderr)
+        self.assertIn('linux-security', result.stderr)
+        self.assertEqual(f.records(), [])
 
-    def test_complete_environment_runs_the_packaged_suite_once(self) -> None:
-        self.fx.add_test("test_marker_a.py", PASSING_MODULE.format(name="MarkerA"))
-        self.fx.add_test("test_marker_b.py", PASSING_MODULE.format(name="MarkerB"))
-        result = self.fx.run(self.fx.environment(**self.fx.complete_environment()))
-        output = result.stdout + result.stderr
-        self.assertEqual(result.returncode, 0, output)
-        records = self.fx.records()
-        self.assertEqual(len(records), 2, f"expected one run per module, got {records}")
-        markers = sorted(record[0] for record in records)
-        self.assertEqual(
-            markers,
-            sorted((self.fx.tests / name).resolve().as_posix() for name in ("test_marker_a.py", "test_marker_b.py")),
-        )
-        for record in records:
-            self.assertEqual(Path(record[1]).resolve(), Path(sys.executable).resolve())
-            self.assertEqual(record[2], CANARY, "the child did not inherit the role environment")
-        self.assertIn("Ran 2 tests", output)
-        self.assertEqual(list(self.fx.cwd.iterdir()), [], "the command wrote into its current directory")
-        self.assertFalse(any((PACKAGE / "tests").glob("test_marker_*.py")))
+    def test_missing_and_invalid_prerequisites_aggregate_before_import(self):
+        f = self.fixture()
+        (f.bin / 'node').unlink()
+        result = f.run(complete=False, DCC_PI_EXECUTABLE='relative', DCC_HERDR_EXECUTABLE=str(f.bin),
+                       DCC_B3_NODE=f.tools['DCC_B3_OPENSPEC'])
+        self.stopped(f, result)
+        for variable in FILE_TOOLS + ('node',):
+            self.assertEqual(result.stderr.count(f'FAIL  {variable}:'), 1, result.stderr)
+        for reason in ('not an absolute path', 'not name an existing file', 'not executable', 'is not set'):
+            self.assertIn(reason, result.stderr)
+        self.assertIn('NOT VERIFIED (linux-security excluded)', result.stdout)
 
-    def test_failing_suite_status_is_passed_through(self) -> None:
-        self.fx.add_test("test_marker_fail.py", FAILING_MODULE)
-        result = self.fx.run(self.fx.environment(**self.fx.complete_environment()))
+    def test_check_reports_coverage_but_does_not_import_or_run(self):
+        f = self.fixture()
+        result = f.run('--check')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('PASS  coverage', result.stdout)
+        self.assertIn('selected tests NOT VERIFIED', result.stdout)
+        self.assertEqual(f.records(), [])
+        self.assertFalse(f.namespace.exists())
+
+    def test_failing_child_status_passes_through(self):
+        f = self.fixture()
+        result = f.run(MARKER_FAIL='test_native_marker')
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertEqual(self.fx.records(), [["ran"]])
-        self.assertIn("FAILED", result.stderr)
-        self.assertIn("fixture failure", result.stderr)
+        self.assertIn('fixture failed deliberately', result.stderr)
+        self.assertEqual([r[0:2] for r in f.records()], [['import', 'test_native_marker'], ['run', 'test_native_marker']])
 
-    def test_missing_suite_is_refused_without_discovery(self) -> None:
-        shutil.rmtree(self.fx.tests)
-        result = self.fx.run(self.fx.environment(**self.fx.complete_environment()))
-        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-        self.assertIn("FAIL  suite:", result.stderr)
-        self.assertNotIn("ran 0 tests", result.stdout.lower())
+    def test_linux_profile_refuses_mac_before_test_import(self):
+        f = self.fixture()
+        f.unshare(0)
+        result = f.run('--profile', 'linux-security')
+        self.stopped(f, result)
+        self.assertIn('linux-security requires Linux', result.stderr)
+        self.assertIn('NOT VERIFIED (native excluded)', result.stdout)
+        self.assertFalse(f.namespace.exists(), 'must not try Linux features on Darwin')
+
+    def test_simulated_linux_missing_kernel_and_namespace_fail_together(self):
+        f = self.fixture(platform='linux', kernel_problem='Linux ABI not available in fixture')
+        f.unshare(19)
+        result = f.run('--profile', 'linux-security', '--check', DCC_PI_EXECUTABLE='')
+        self.stopped(f, result)
+        self.assertIn('FAIL  Landlock: Linux ABI not available', result.stderr)
+        self.assertIn('FAIL  unshare: user/network namespace probe failed with status 19', result.stderr)
+        self.assertIn('FAIL  DCC_PI_EXECUTABLE:', result.stderr)
+        self.assertEqual(f.namespace.read_text().strip(), '-Urn -- /bin/true')
+
+    def test_simulated_linux_only_runs_selected_security_tests(self):
+        f = self.fixture(platform='linux')
+        f.unshare(0)
+        check = f.run('--profile', 'linux-security', '--check', complete=False, DCC_PI_EXECUTABLE=f.tools['DCC_PI_EXECUTABLE'])
+        self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+        self.assertEqual(f.records(), [])
+        result = f.run('--profile', 'linux-security', complete=False, DCC_PI_EXECUTABLE=f.tools['DCC_PI_EXECUTABLE'])
+        self.selection(f, result, 'test_linux_marker', 'test_native_marker')
+        self.assertEqual(f.namespace.read_text().strip(), '-Urn -- /bin/true')
+
+    def test_unclassified_new_test_fails_without_import(self):
+        f = self.fixture()
+        f.add_test('test_unclassified')
+        result = f.run()
+        self.stopped(f, result)
+        self.assertIn('unclassified test: test_unclassified.Marker.test_once', result.stderr)
+
+    def test_missing_declared_test_module_fails_without_import(self):
+        f = self.fixture()
+        (f.tests / 'test_native_marker.py').unlink()
+        result = f.run('--check')
+        self.stopped(f, result)
+        self.assertIn('native selector has no tests: test_native_marker', result.stderr)
 
 
-class ShipmentCoverageTest(unittest.TestCase):
-    def test_existing_test_modules_are_still_packaged(self) -> None:
-        present = {path.name for path in (PACKAGE / "tests").glob("test_*.py")} - {"test_verify_suite.py"}
-        self.assertEqual(present, BASELINE_TEST_MODULES, "an existing test module was dropped or renamed")
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

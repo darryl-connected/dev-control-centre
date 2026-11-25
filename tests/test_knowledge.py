@@ -179,7 +179,7 @@ class HubFixture:
         for path, content in DOCS.items():
             write(self.source / path, content, 0o644)
         self.commit = self.save('synthetic sources')
-        plan = self.fx.inspect()
+        plan = self.fx.inspect('--append', 'use-template')
         assert plan.returncode == 0, plan.stderr
         write(self.fx.plan, plan.stdout)
         applied = self.fx.apply(*APPROVE)

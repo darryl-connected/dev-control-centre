@@ -42,7 +42,8 @@ if '--list-models' in argv:
     assert os.environ['PI_OFFLINE'] == '1'
     print('provider       model               context max-out thinking images')
     print('elsewhere      Coordinator-1       128K    2K      yes      no')
-    print('fixture-lab    Org/Model-V2:2026    128K    2K      yes      no')
+    advertised = os.environ.get('DCC_FIXTURE_CONTEXT', '128K')
+    print(f'fixture-lab    Org/Model-V2:2026    {advertised}    2K      yes      no')
     print('fixture-lab    plain               128K    2K      no       no')
     print('deepseek       deepseek-flash      128K    2K      no       no')
     print('openai         gpt-6.1-sol         128K    2K      yes      no')
@@ -209,6 +210,28 @@ class WorkspacePolicyTest(unittest.TestCase):
         self.assertEqual(file_map(r.agent), agent)
         self.assertEqual(file_map(r.home), home)
         r.maps.update(target_before_gate=target, target_after_handoff=file_map(r.repo), agent=agent, home=home)
+
+    def test_unknown_advertised_context_does_not_replace_the_selected_route(self):
+        r = PortableLoop(self)
+        r.env['DCC_FIXTURE_CONTEXT'] = 'unknown'
+        review = r.reviewed()
+        writer, reviewer = r.dispatches()
+        self.assert_process_route(writer, reasoning='minimal', worktree=r.writer, agent=r.agent, role='writer')
+        self.assert_process_route(reviewer, reasoning='xhigh', worktree=review, agent=r.agent, role='reviewer')
+        self.assertNotEqual(writer['cwd'], reviewer['cwd'])
+        self.assertEqual(r.state_row()['routes'], CUSTOM['routes'])
+        self.assertEqual(r.target_status(), [])
+
+    def test_shared_custom_route_does_not_allow_a_shared_worktree(self):
+        r = PortableLoop(self)
+        r.register()
+        r.reviewer = r.writer
+        before = r.protected()
+        self.refused(r.preview(check=False), 'writer and reviewer worktrees must be distinct')
+        self.assertEqual(r.protected(), before)
+        self.assertFalse(r.plan.exists() or r.state.exists() or r.writer.exists())
+        self.assertEqual(r.dispatches(), [])
+        self.assertEqual(r.herdr_rows(), [])
 
     def test_invalid_and_unavailable_routes_refuse_without_dispatch(self):
         r = PortableLoop(self)

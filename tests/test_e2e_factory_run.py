@@ -1,4 +1,4 @@
-"""Real Git, Pi 1.4.0 and Herdr 0.9.1 fixtures for the coordinator-invoked loop.
+"""Real Git, Pi 1.4.0 and Herdr fixtures for the coordinator-invoked loop.
 
 Deterministic providers emit fixed text only; the fixture applies the benign
 candidate edit after dispatch. Listener readiness uses the shipped extension's
@@ -219,6 +219,12 @@ class LoopFixture:
         return self.cli("scripts/factory-run.py", *args, check=check)
 
     def start_herdr(self) -> None:
+        if sys.platform == "darwin":
+            # Darwin Herdr only reports argv0, and Pi changes its process title.
+            # Observe Node's real entrypoint and arguments before Pi code runs.
+            preload = self.kit / "tests/fixtures/verification/observe-pi-entry.cjs"
+            self.test.assertTrue(preload.is_file(), "Darwin argv observer is not packaged")
+            self.env["NODE_OPTIONS"] = "--require " + json.dumps(str(preload))
         self.herdr_session = json.loads(self.plan.read_text())["herdr_session"]
         self.server = subprocess.Popen([HERDR_EXE, "--session", self.herdr_session, "server"],
                                        env=self.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -272,7 +278,18 @@ class LoopFixture:
         info = self.herdr("pane", "process-info", "--pane", self.role_pane(role, attempt))
         processes = info["process_info"]["foreground_processes"]
         self.test.assertTrue(processes, "role pane has no foreground process")
-        return processes[0]["argv"]
+        if sys.platform != "darwin":
+            return processes[0]["argv"]
+        foreground = processes[0]
+        pid = foreground["pid"]
+        self.test.assertTrue(any(row["pid"] == pid and row["role"] == role for row in self.requests()),
+                             "foreground process is not the observed synthetic role provider")
+        trace = self.root / "process-argv.jsonl"
+        self.test.assertTrue(trace.is_file(), "the actual Node CLI did not start the argv observer")
+        rows = [row for line in trace.read_text().splitlines() if (row := json.loads(line))["pid"] == pid]
+        self.test.assertEqual(len(rows), 1, "expected one startup argv for the actual role process")
+        self.test.assertEqual(rows[0]["cwd"], foreground["cwd"])
+        return rows[0]["argv"]
 
     CONFIG_NAMES = ("settings.json", "trust.json")
     RUNTIME_NAMES = ("auth.json", "models-store.json")

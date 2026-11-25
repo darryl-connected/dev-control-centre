@@ -21,6 +21,7 @@ MEMBERS = (
     "docs/pi-setup.md",
     "docs/customization.md",
     "docs/factory-handoff.md",
+    "docs/verification.md",
     "docs/knowledge-hub.md",
     "docs/clickup.md",
     "docs/task-preparation.md",
@@ -53,6 +54,7 @@ MEMBERS = (
     "scripts/lib/openspec_draft.py",
     "scripts/validate-brief.py",
     "scripts/verify-suite.py",
+    "scripts/lib/verification_profiles.py",
     "scripts/verify-pi-resources.mjs",
     "skills/factory/SKILL.md",
     "skills/grilling/SKILL.md",
@@ -61,6 +63,7 @@ MEMBERS = (
     "templates/dcc/policy.json",
     "tests/fixtures/factory-inbox-provider.ts",
     "tests/fixtures/factory-run-provider.ts",
+    "tests/fixtures/verification/observe-pi-entry.cjs",
     "tests/test_clickup.py",
     "tests/test_e2e_clickup.py",
     "tests/test_e2e_factory.py",
@@ -82,6 +85,8 @@ MEMBERS = (
     "tests/test_e2e_draft.py",
     "tests/test_validate_brief.py",
     "tests/test_verify_suite.py",
+    "tests/test_verification_profiles.py",
+    "tests/test_native_factory_inbox.py",
 )
 
 

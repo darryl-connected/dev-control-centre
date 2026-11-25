@@ -660,7 +660,7 @@ class PreparationDistributionTest(unittest.TestCase):
 
     def test_g8a_real_sdk_advertises_and_expands_shipped_grilling(self) -> None:
         fx = SetupFixture(self.root, self.kit)
-        plan = fx.inspect()
+        plan = fx.inspect('--append', 'use-template')
         self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
         write(fx.plan, plan.stdout)
         applied = fx.apply(*APPROVE)

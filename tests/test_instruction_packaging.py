@@ -87,6 +87,25 @@ class InstructionPackagingTest(unittest.TestCase):
         self.assertIn("A model can be shared across roles; the acceptance session and worktree must be independent", reviewer)
         self.assertIn("does not change target repository rules or grant external access", reviewer)
 
+    def test_review_context_and_model_recommendations_do_not_block_launch(self) -> None:
+        coordinator = self.resource('factory/COORDINATOR.md')
+        self.assertIn('advisory, not launch requirements', coordinator)
+        self.assertIn('A smaller or unknown capacity alone is not a reason to refuse', coordinator)
+        self.assertIn('effective backend capacity as NOT VERIFIED', coordinator)
+        self.assertIn('separate session and worktree and an exact-candidate receipt', coordinator)
+        policy = self.resource('docs/customization.md')
+        self.assertIn('"reviewer": {"provider": "local-lab", "model": "Builder"', policy)
+        self.assertIn('Do not use this edit to change roles or reset spending for an already approved job', policy)
+        for path in ('README.md', 'docs/customization.md', 'docs/pi-setup.md', 'docs/scope.md', 'factory/COORDINATOR.md',
+                     'factory/WORKER.md', 'factory/REVIEWER.md', 'templates/pi/APPEND_SYSTEM.md',
+                     'skills/factory/SKILL.md', 'references/factory-contract.md'):
+            prose = ' '.join(self.resource(path).lower().split())
+            with self.subTest(path=path):
+                self.assertNotRegex(prose, r'(?:require an independent reviewer with|reviewer must have|'
+                                    r'verify the exact reviewer route has) [^.]{0,100}(?:1m|1,000,000)')
+                self.assertNotRegex(prose, r'(?:writer and reviewer must use different models|'
+                                    r'refuse launch if [^.]*context is unknown|block launch if [^.]*capacity is unknown)')
+
     def test_coordinator_does_not_claim_auto_commit_authority(self) -> None:
         coordinator = self.resource("factory/COORDINATOR.md")
         self.assertNotRegex(coordinator.lower(), r"commits? (?:are |is )?automatically (?:permitted|approved)|automatically commit on")

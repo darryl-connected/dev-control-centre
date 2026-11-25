@@ -15,7 +15,7 @@
     {
       "path": "README.md",
       "section": null,
-      "sha256": "120d1e41c4066c4de770ecafb57be1501e98ae85e9278c8b4a983de6afe5b6d0"
+      "sha256": "7c4e95a3c352b4444e5dc21cd0a86f8c462a58c5938b3cb9bcdb2bdf681a5516"
     },
     {
       "path": "docs/scope.md",
@@ -25,17 +25,17 @@
     {
       "path": "docs/customization.md",
       "section": null,
-      "sha256": "6005078336b0779409aefe1b400f84bd8d4916a2c7440c0e46731930417e340b"
+      "sha256": "29a78a6672d780589e01d51a9bc341b61fe967144a5e1746caa4082d2ae5d198"
     },
     {
       "path": "docs/pi-setup.md",
       "section": null,
-      "sha256": "6fc26d48d83e3c3e78eacfada1f1f3d47966bba19fc8a1428982371921a8374a"
+      "sha256": "a7987a07cea115cdeae7e80be9a52b36d89e862ad2b3c397cb181698a13a48f9"
     },
     {
       "path": "factory/COORDINATOR.md",
       "section": null,
-      "sha256": "ed99a0f4aa99371e63e37dfbbf225533440baf09f1bb6c2123b6bcb9cce89efe"
+      "sha256": "9f5b67f0fd282ef82449a4770c55ff1351677328232d4c38c0463efeaa3352b4"
     },
     {
       "path": "factory/WORKER.md",
@@ -55,7 +55,7 @@
     {
       "path": "scripts/build.py",
       "section": null,
-      "sha256": "115c32a5707b9c20102f19969852e5055108b8612e71b3335445f70b1baefb6b"
+      "sha256": "b16a09201442513a6f2f3cb9066549c9a7a875b2ae870f93f35235edaba9ea88"
     },
     {
       "path": "scripts/lib/factory_contract.py",
@@ -115,12 +115,12 @@
     {
       "path": "tests/test_instruction_packaging.py",
       "section": null,
-      "sha256": "9273fe20507c2f0c8357a0582069ce63476acb00a545d53697a57da7094537cd"
+      "sha256": "ccf6744055f4a9f963249e278dffd1b3e6d9a075d29977070c9e0f3212be72b1"
     },
     {
       "path": "tests/test_e2e_factory.py",
       "section": null,
-      "sha256": "d1922175a31c0b12c7114b7789e5464d8177d70bb0449922b187ddb946fb841e"
+      "sha256": "87c2fe57236e87e3d67f932cd56b4fe6dce7565b3f42dfac9aff6e7d5815aa56"
     },
     {
       "path": "templates/pi/APPEND_SYSTEM.md",
@@ -140,7 +140,7 @@
     {
       "path": "skills/factory/SKILL.md",
       "section": null,
-      "sha256": "c71b8ad6db3be17fe6c7345979b22939f1def403acc602043b835baa908d7925"
+      "sha256": "0b8fc34e6259e3480739934f46f091e3db04b1cffb095da9f3e528df55bec9fb"
     },
     {
       "path": "skills/grilling/SKILL.md",
